@@ -1,0 +1,11 @@
+* Start dropped task
+
+** Instructions
+
+Treat attached file as task request. Route it in this order:
+
+1. Load and follow =project-org-tasks=. If request clearly matches an existing project under =~/org/work=, add or resume one =PROG= task in its canonical project Org file.
+2. Otherwise inspect existing Org files directly under =~/org/life=. If request clearly belongs in one, add or resume =PROG= under most relevant existing heading.
+3. Otherwise add it under =General= in =~/org/todo.org= and mark it =PROG=.
+
+Then begin task and take it as far as possible in this run. Before work in source repository, read its instructions and inspect existing state. Verify completed work and synchronize selected Org file before finishing. Do not create project or life document. Do not modify attached file. Drop-zone mode and these routing rules take precedence over conflicting routing or state instructions in attached request.

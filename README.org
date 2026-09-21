@@ -19,6 +19,8 @@ Home Manager owns installation, activation, persistence, secrets, services, and 
 
 Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessions=. The Pi wrapper sets =PI_CODING_AGENT_SESSION_DIR= so replacing or remounting =~/.pi/agent= cannot invalidate an active session path.
 
+Inbox drop-zone prompts live in =pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
+
 Shared skills live only in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees.
 
 ** Bootstrap
