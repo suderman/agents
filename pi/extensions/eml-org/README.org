@@ -1,0 +1,50 @@
+#+title: EML to Org
+
+* Usage
+
+Run:
+
+#+begin_src text
+/eml-org ~/Downloads/message.eml
+#+end_src
+
+The extension creates an Org file in =~/org/email/=. It never changes or deletes the source email.
+
+The filename uses the message date and a lowercase ASCII subject slug:
+
+#+begin_src text
+2025-09-09-sia-website-analytics-audit.org
+#+end_src
+
+If that name exists, the extension adds =-2=, =-3=, and so on. It never overwrites an existing Org file.
+
+* Output
+
+The Org file includes an =ID= property, title, email date, sender, recipients, message ID, source filename, and body. HTML bodies are converted with Pandoc. Plain-text bodies remain plain text.
+
+Each message is a top-level heading. The converter recognizes attached RFC 822 messages and common quoted-thread markers such as =On ... wrote:=, =Original Message=, and =Forwarded message=. Email thread markup has no common standard, so an unrecognized mail-client format remains inside one heading rather than risking a bad split.
+
+MIME attachments and embedded images use the shared Org attachment directory:
+
+#+begin_src text
+~/org/.attach/ID_PREFIX/ID_REMAINDER/
+#+end_src
+
+The first email heading has an =ID= property. Emacs resolves =attachment:= links through the centralized =org-attach-id-dir= at =~/org/.attach=. Embedded =cid:= image references are changed to those links. External images are not downloaded.
+
+Pandoc writes HTML hard line breaks as trailing =\\=. The converter removes those markers and keeps paragraph breaks instead.
+
+* Requirements
+
+The extension uses =python3= for standard-library MIME parsing and =pandoc= for HTML-to-Org conversion. Both are already available in the current Nix environment. No npm packages are required.
+
+* Files and limits
+
+Only =.eml= input is accepted. Input is limited to 100 MB. Output and attachment names are sanitized before writing. Existing output is preserved on filename collisions.
+
+* Tests
+
+#+begin_src sh
+cd ~/.pi/agent/extensions/eml-org
+npm test
+#+end_src

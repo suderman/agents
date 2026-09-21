@@ -1,0 +1,89 @@
+{
+  "providers": {
+    "codex-lb": {
+      "name": "codex-lb",
+      "baseUrl": "https://codex-lb.kit/v1",
+      "api": "openai-responses",
+      "apiKey": "$CODEX_LB_API_KEY",
+      "models": [
+        {
+          "id": "gpt-5.6-sol",
+          "name": "GPT-5.6 Sol (codex-lb)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": "minimal",
+            "low": "light",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1100000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-5.6-terra",
+          "name": "GPT-5.6 Terra (codex-lb)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": "minimal",
+            "low": "light",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1100000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-5.6-luna",
+          "name": "GPT-5.6 Luna (codex-lb)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": "none",
+            "minimal": "minimal",
+            "low": "light",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1100000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra (codex-lb)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1100000,
+          "maxTokens": 128000
+        }
+      ]
+    },
+    "minimax": {
+      "apiKey": "$MINIMAX_API_KEY",
+      "modelOverrides": {
+        "MiniMax-M3": {
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null
+          }
+        }
+      }
+    }
+  }
+}

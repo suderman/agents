@@ -1,0 +1,13 @@
+{
+  "nojoinUrl": "https://nojoin.kit",
+  "pollIntervalMs": 3000,
+  "autoStart": false,
+  "automaticModel": "codex-lb/gpt-5.6-luna",
+  "manualModel": "codex-lb/gpt-5.6-terra",
+  "recentContextSeconds": 180,
+  "adviceEnabled": true,
+  "triggerWords": 24,
+  "summaryWords": 300,
+  "requestTimeoutMs": 10000,
+  "debug": false
+}

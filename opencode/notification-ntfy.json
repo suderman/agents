@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/opencode-ntfy.sh/notification-ntfy.schema.json",
+  "events": {
+    "session.idle": { "enabled": true },
+    "session.error": { "enabled": true },
+    "permission.asked": { "enabled": true }
+  },
+  "backend": {
+    "server": "https://ntfy.hub",
+    "topic": "opencode",
+    "title": {
+      "session.idle": { "value": "{project}: Agent Idle" },
+      "session.error": { "value": "{project}: Agent Error" },
+      "permission.asked": { "value": "{project}: Agent Blocked" }
+    },
+    "message": {
+      "session.idle": { "value": "Ready for next prompt." },
+      "session.error": { "value": "{error}" },
+      "permission.asked": { "value": "Permission {permission_type} requested" }
+    },
+    "icon": {
+      "mode": "dark"
+    }
+  }
+}

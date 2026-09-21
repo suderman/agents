@@ -1,0 +1,10 @@
+{
+  "powerbar": {
+    "separator": " │ ",
+    "placement": "belowEditor",
+    "bar-style": "blocks",
+    "bar-width": "12",
+    "left": "context-usage,git-branch,tokens",
+    "right": "model,provider,sub-hourly,sub-weekly"
+  }
+}

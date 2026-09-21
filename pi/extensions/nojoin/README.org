@@ -1,0 +1,183 @@
+#+title: Nojoin
+
+* What it does
+
+This Pi extension watches the canonical live transcript from Nojoin and keeps a small adviser widget above Pi's editor. It does not capture audio, record meetings, run transcription, or copy transcript messages into the normal Pi conversation.
+
+Nojoin usually stays silent. When a client asks a question, it first tries to give the participant a direct =SAY= answer grounded in the loaded meeting brief, transcript, and stable domain knowledge. It uses =ASK= only when missing information blocks a safe answer. =WATCH= flags a private concern. Automatic checks use one isolated Pi model request at a time. New transcript states replace queued old states.
+
+While Nojoin is running and a live recording exists, normal questions typed into Pi also receive the loaded brief, compact meeting context, and recent transcript through a temporary system-prompt addition. This context is not added to the visible chat or saved as a separate message. Pi answers these direct questions briefly so the response is easy to scan or say aloud during the meeting.
+
+* Installation
+
+The extension lives at:
+
+#+begin_src text
+~/.pi/agent/extensions/nojoin/
+#+end_src
+
+Pi discovers =index.ts= automatically. Run =/reload= after changing the extension or its configuration.
+
+Pi 0.85.1 runs TypeScript extensions directly. No package install or build step is needed. The extension has no third-party runtime dependencies beyond packages shipped with Pi.
+
+* Authentication
+
+Nojoin API clients authenticate through:
+
+#+begin_src text
+POST https://nojoin.kit/api/v1/login/access-token
+#+end_src
+
+Set credentials in the environment before starting Pi:
+
+#+begin_src sh
+export NOJOIN_USERNAME='your Nojoin username'
+export NOJOIN_PASSWORD='your Nojoin password'
+pi
+#+end_src
+
+For short-lived debugging, an existing API bearer token can replace username and password:
+
+#+begin_src sh
+export NOJOIN_TOKEN='token value'
+pi
+#+end_src
+
+=NOJOIN_URL= is optional and defaults to =https://nojoin.kit=. The extension requires HTTPS.
+
+Pi 0.85.1 does not expose a masked secret variant of =ctx.ui.input()=. The extension therefore refuses to collect a password in a visible TUI input and uses environment variables instead. It keeps the bearer token in memory, honors =expires_in=, and logs neither credentials nor authorization headers.
+
+Do not use a Nojoin MCP token. MCP tokens cannot authenticate normal =/api/v1= routes.
+
+* Configuration
+
+Edit =config.json=, then run =/reload=:
+
+#+begin_src json
+{
+  "nojoinUrl": "https://nojoin.kit",
+  "pollIntervalMs": 3000,
+  "autoStart": false,
+  "automaticModel": "codex-lb/gpt-5.6-luna",
+  "manualModel": "codex-lb/gpt-5.6-terra",
+  "recentContextSeconds": 180,
+  "adviceEnabled": true,
+  "triggerWords": 24,
+  "summaryWords": 300,
+  "requestTimeoutMs": 10000,
+  "debug": false
+}
+#+end_src
+
+Model values use =provider/model-id=. If a configured model is unavailable, the extension prefers GPT-5.6 Luna on the active Pi provider, then any authenticated Luna model, then Pi's current model.
+
+=autoStart= defaults to =false=. With =true=, the extension starts on Pi session startup and remains idle without making model calls until it finds a live browser capture.
+
+* Commands
+
+#+begin_src text
+/nojoin start
+/nojoin stop
+/nojoin status
+/nojoin focus TEXT
+/nojoin focus
+/nojoin focus-clear
+/nojoin brief PATH
+/nojoin brief
+/nojoin brief-clear
+/nojoin help
+/nojoin recording RECORDING_ID
+/nojoin auto
+/nojoin clear
+/nojoin debug on
+/nojoin debug off
+#+end_src
+
+=start= authenticates, discovers a live recording, starts polling, and prepares normal Pi chat turns to use current meeting context. =stop= aborts network and model work, clears timers and meeting state, removes the widget, and stops adding meeting context to chat turns. =recording= selects one recording for debugging; =auto= returns to automatic selection. =clear= clears the advice log without stopping the listener.
+
+=focus TEXT= sets a meeting-specific instruction. Calling =focus= without text shows it. =focus-clear= removes it.
+
+=brief PATH= loads a UTF-8 plain-text, Markdown, Org, CSV, JSON, HTML, or email report into the isolated adviser context. Relative paths resolve from Pi's current working directory, and =~/= resolves from the home directory. Calling =brief= without a path shows the loaded file; =brief-clear= removes it. Files are limited to 40,000 characters. The brief stays in memory until it is replaced, cleared, the extension stops, or Pi reloads. It is sent to the configured Pi model with each advice request, not to Nojoin.
+
+=help= fetches the newest transcript state and asks for a short line to say next. It interrupts an automatic model request rather than waiting behind it. If the model finds no grounded suggestion, the widget says so instead of silently returning to listening.
+
+* Shortcut
+
+=Ctrl+Alt+H= runs manual help. Pi's 0.85.1 default keybindings do not use this combination. Pi still checks extension shortcuts against current user bindings during load and reports a conflict instead of silently taking a protected key.
+
+* Transcript and adviser behavior
+
+The extension uses these deployed routes:
+
+#+begin_src text
+GET /api/v1/recordings?limit=20&status=UPLOADING&status=PAUSED
+GET /api/v1/recordings/{recordingId}
+GET /api/v1/transcripts/{recordingId}/utterances
+GET /api/v1/transcripts/{recordingId}/utterances?after_revision={revision}
+#+end_src
+
+A live browser capture is identified by =client_status= =RECORDING= or =PAUSED=, or recording status =PAUSED=. This avoids mistaking a file import in =UPLOADING= for a meeting.
+
+The first transcript request is a full snapshot. Later requests use the revision cursor. Changed utterances replace local entries by ID, and tombstones remove superseded entries. The revision advances only after the full response has passed validation and its changes have been applied. A lower revision causes a fresh snapshot. The REST endpoint has no paging fields in the current Nojoin contract.
+
+Recent context keeps about three minutes of source-preserving utterances with a character cap. A separate compact rolling context is refreshed after enough speech. Neither is persisted. Microphone and system channels are described to the model as likely participant and likely remote audio, never as certain identity.
+
+Cheap trigger rules wait for a completed substantial utterance, a question on system audio, or enough new words. The model makes the final choice. It prefers a direct =SAY= answer for client questions and stays silent when no useful intervention is needed. It must not invent report-specific facts.
+
+The widget keeps the five newest =SAY=, =ASK=, and =WATCH= items as a timestamped in-memory log, with the newest at the bottom. Old entries scroll off as new advice arrives. The log clears when the meeting ends, the brief changes, the extension reloads or stops, or =clear= runs. It is never written to disk.
+
+Current advice expires after 30 seconds for =SAY=, 60 seconds for =ASK=, and 120 seconds for =WATCH=. New speech clears current =SAY= and =ASK= state sooner, but displayed history remains. Results based on a different recording or at least 20 newer words are discarded.
+
+The model uses Pi's existing model registry and authentication. Requests carry explicit rolling context in an isolated direct model context. They do not use or add to the visible Pi session history.
+
+* Debugging
+
+Run:
+
+#+begin_src text
+/nojoin status
+/nojoin debug on
+#+end_src
+
+Status reports connection state, active recording, revision, poll and inference times, chosen models, queue state, focus, loaded brief, and last sanitized error.
+
+Debug mode writes timing, revision, trigger, reconnect, inference, action, and stale-discard events to stderr. It does not write transcript text, passwords, bearer tokens, authorization headers, or model-provider secrets.
+
+Common failures:
+
+- =Authentication needed=: start Pi with =NOJOIN_USERNAME= and =NOJOIN_PASSWORD=, or supply =NOJOIN_TOKEN= for debugging.
+- =Nojoin unavailable=: check DNS, TLS trust, and the Nojoin service. The extension will back off and retry. It never disables TLS verification.
+- =automatic model: unavailable=: authenticate a Pi provider or change the model value in =config.json=.
+- No meeting detected: confirm Nojoin shows a browser capture with client status =RECORDING= or =PAUSED=. A file upload is deliberately ignored.
+
+* Tests
+
+Run the tests with Node 24 or newer:
+
+#+begin_src sh
+cd ~/.pi/agent/extensions/nojoin
+npm test
+#+end_src
+
+Tests cover transcript delta replacement and tombstones, revision handling, model-output validation, silence, expiry, single-flight coalescing, manual interruption, stale-result suppression, timer cleanup, active-recording selection, token expiry, outage recovery, and focus, brief, and source context.
+
+* Security notes
+
+- Credentials come only from environment variables.
+- Tokens remain in memory and are cleared on stop or session shutdown.
+- The extension performs read-only recording and transcript requests after login.
+- Transcript and brief text go only to the selected Pi model. They are not logged, written by the extension, appended to Pi chat, or sent to Nojoin MCP.
+- HTTP is rejected. TLS verification uses Node's defaults.
+- Error messages omit response bodies because those may contain private data.
+
+* Current API differences
+
+Implementation was checked against installed Pi 0.85.1 and Nojoin commit =fbc079a6964176112251cdb5cafda99c36b7a215=. The running =https://nojoin.kit= deployment answered the expected =/api/v1= recording and transcript paths with authenticated-route responses.
+
+Current Nojoin uses the public recording ID string throughout these routes. Live capture cannot be detected from =UPLOADING= alone because imports use that status too; =client_status= is the reliable distinction. The utterance REST response has =revision=, =utterances=, =tombstones=, and =speakers= but no paging cursor. Each utterance may expose =source_channel= as =microphone=, =system=, or null.
+
+Pi 0.85.1 exposes =ctx.modelRegistry.complete()= for isolated model calls. The extension uses that smaller API instead of creating a nested =AgentSession=, which would load unnecessary tools and extension resources. Each request receives only adviser-owned context.
+
+* Deliberately deferred
+
+Historical search through Nojoin MCP is not part of the live path. Add it only as an explicit manual action when a meeting needs old notes or documents. A stronger manual model can be configured now without adding a second scheduling system. Persistent transcript or meeting-context storage should remain out unless a real recovery need appears.

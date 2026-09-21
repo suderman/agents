@@ -1,0 +1,64 @@
+{
+  "defaultProvider": "codex-lb",
+  "defaultModel": "gpt-5.6-sol",
+  "defaultThinkingLevel": "high",
+  "enabledModels": [
+    "codex-lb/gpt-5.6-sol:high",
+    "codex-lb/gpt-5.6-terra:medium",
+    "codex-lb/gpt-6-astra:high"
+  ],
+  "transport": "sse",
+  "theme": "catppuccin-macchiato",
+  "tuiMode": "fullscreen",
+  "hideThinkingBlock": true,
+  "subagents": {
+    "agentOverrides": {
+      "scout": {
+        "model": "codex-lb/gpt-5.6-terra",
+        "thinking": "low",
+        "defaultContext": "fresh"
+      },
+      "oracle": {
+        "model": "codex-lb/gpt-6-astra",
+        "thinking": "high",
+        "defaultContext": "fresh"
+      },
+      "reviewer": {
+        "model": "inherit",
+        "thinking": "high",
+        "defaultContext": "fresh"
+      }
+    },
+    "modelScope": {
+      "enforce": true,
+      "strict": true,
+      "agents": {
+        "scout": {
+          "allow": [
+            "codex-lb/gpt-5.6-terra"
+          ]
+        },
+        "oracle": {
+          "allow": [
+            "codex-lb/gpt-6-astra"
+          ]
+        },
+        "reviewer": {
+          "allow": [
+            "inherit"
+          ]
+        }
+      }
+    }
+  },
+  "packages": [
+    "npm:@juicesharp/rpiv-btw",
+    "npm:pi-web-access",
+    "npm:pi-mcp-adapter",
+    "npm:pi-lens",
+    "npm:@pi-vault/pi-dcp",
+    "npm:pi-subagents",
+    "npm:@ff-labs/pi-fff",
+    "npm:@pi-unipi/notify"
+  ]
+}

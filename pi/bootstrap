@@ -1,0 +1,170 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+runtime_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/pi"
+
+case "$runtime_dir" in
+  ""|/|"$HOME"|"$source_dir")
+    echo "Refusing unsafe Pi destination: $runtime_dir" >&2
+    exit 1
+    ;;
+esac
+
+copy_file() {
+  local source="$1"
+  local target="$2"
+  local temporary
+
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$source" "$target"; then
+    return
+  fi
+
+  mkdir -p -- "$(dirname -- "$target")"
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' RETURN
+  cp --dereference --preserve=mode -- "$source" "$temporary"
+  chmod u+rw -- "$temporary"
+  mv -fT -- "$temporary" "$target"
+  trap - RETURN
+}
+
+materialize_link() {
+  local target="$1"
+  local resolved="$2"
+  local temporary
+
+  if [[ -d "$target" ]]; then
+    temporary="$(mktemp -d "${target}.tmp.XXXXXX")"
+    cp -aL -- "$target"/. "$temporary"/
+    rm -- "$target"
+    mv -T -- "$temporary" "$target"
+  elif [[ -e "$target" ]]; then
+    temporary="$(mktemp "${target}.tmp.XXXXXX")"
+    cp -aL -- "$target" "$temporary"
+    chmod u+rw -- "$temporary"
+    rm -- "$target"
+    mv -T -- "$temporary" "$target"
+  else
+    echo "Cannot materialize dangling Pi link: $target -> $resolved" >&2
+    exit 1
+  fi
+}
+
+retire_legacy_skills() {
+  local target="$runtime_dir/skills"
+  local backup="$state_dir/legacy-skills"
+  local resolved
+
+  [[ -e "$target" || -L "$target" ]] || return 0
+
+  if [[ -e "$backup" || -L "$backup" ]]; then
+    echo "Cannot preserve legacy Pi skills: $backup already exists" >&2
+    exit 1
+  fi
+
+  mkdir -p -- "$state_dir"
+  if [[ -L "$target" ]]; then
+    resolved="$(readlink -f -- "$target" || true)"
+    if [[ "$resolved" == "$HOME/.config/pi/skills" && -d "$resolved" ]]; then
+      mv -- "$resolved" "$backup"
+    fi
+    rm -- "$target"
+  else
+    mv -- "$target" "$backup"
+  fi
+
+  echo "Preserved legacy Pi skills at $backup" >&2
+}
+
+materialize_legacy_facade() {
+  local target resolved
+
+  shopt -s nullglob dotglob
+  for target in "$runtime_dir"/*; do
+    [[ -L "$target" ]] || continue
+    resolved="$(readlink -f -- "$target" || true)"
+    case "$resolved" in
+      "$HOME/.config/pi"/*|"$HOME/.local/state/pi"/*)
+        materialize_link "$target" "$resolved"
+        ;;
+    esac
+  done
+  shopt -u nullglob dotglob
+}
+
+merge_settings() {
+  local target="$runtime_dir/settings.json"
+  local existing temporary
+
+  existing="$(mktemp)"
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$existing" "$temporary"' RETURN
+
+  if [[ -e "$target" ]]; then
+    cp -L -- "$target" "$existing"
+  else
+    printf '{}\n' >"$existing"
+  fi
+
+  jq -S -s '
+    if (.[0] | type) != "object" or (.[1] | type) != "object" then
+      error("Pi settings must be JSON objects")
+    else
+      .[0] * .[1]
+    end
+  ' "$existing" "$source_dir/settings.json" >"$temporary"
+  chmod 0644 -- "$temporary"
+
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$temporary" "$target"; then
+    rm -f -- "$temporary"
+  else
+    mv -fT -- "$temporary" "$target"
+  fi
+
+  rm -f -- "$existing"
+  trap - RETURN
+}
+
+copy_declared_entries() {
+  local relative="$1"
+  local source target temporary
+
+  mkdir -p -- "$runtime_dir/$relative"
+  shopt -s nullglob dotglob
+  for source in "$source_dir/$relative"/*; do
+    target="$runtime_dir/$relative/${source##*/}"
+    if [[ -d "$source" ]]; then
+      if [[ -L "$target" ]]; then
+        temporary="$(mktemp -d "${target}.tmp.XXXXXX")"
+        [[ -d "$target" ]] && cp -aL -- "$target"/. "$temporary"/
+        rm -- "$target"
+        mv -T -- "$temporary" "$target"
+      fi
+      mkdir -p -- "$target"
+      cp -a -- "$source"/. "$target"/
+    else
+      copy_file "$source" "$target"
+    fi
+  done
+  shopt -u nullglob dotglob
+}
+
+command -v jq >/dev/null || {
+  echo "Pi bootstrap requires jq" >&2
+  exit 1
+}
+
+mkdir -p -- "$runtime_dir"
+retire_legacy_skills
+materialize_legacy_facade
+merge_settings
+
+for file in AGENTS.md keybindings.json mcp.json models.json settings-extensions.json; do
+  copy_file "$source_dir/$file" "$runtime_dir/$file"
+done
+
+for directory in extensions prompts themes; do
+  copy_declared_entries "$directory"
+done

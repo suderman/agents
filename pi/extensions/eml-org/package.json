@@ -1,0 +1,7 @@
+{
+  "name": "eml-org",
+  "private": true,
+  "scripts": {
+    "test": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_convert.py"
+  }
+}

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+runtime_dir="${OPENCODE_CONFIG_DIR:-${OPENCODE_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}}"
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
+
+case "$runtime_dir" in
+  ""|/|"$HOME"|"$source_dir")
+    echo "Refusing unsafe OpenCode destination: $runtime_dir" >&2
+    exit 1
+    ;;
+esac
+
+copy_file() {
+  local source="$1"
+  local target="$2"
+  local temporary
+
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$source" "$target"; then
+    return
+  fi
+
+  mkdir -p -- "$(dirname -- "$target")"
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' RETURN
+  cp --dereference --preserve=mode -- "$source" "$temporary"
+  chmod u+rw -- "$temporary"
+  mv -fT -- "$temporary" "$target"
+  trap - RETURN
+}
+
+copy_declared_entries() {
+  local relative="$1"
+  local source target temporary
+
+  mkdir -p -- "$runtime_dir/$relative"
+  shopt -s nullglob dotglob
+  for source in "$source_dir/$relative"/*; do
+    target="$runtime_dir/$relative/${source##*/}"
+    if [[ -d "$source" ]]; then
+      if [[ -L "$target" ]]; then
+        temporary="$(mktemp -d "${target}.tmp.XXXXXX")"
+        [[ -d "$target" ]] && cp -aL -- "$target"/. "$temporary"/
+        rm -- "$target"
+        mv -T -- "$temporary" "$target"
+      fi
+      mkdir -p -- "$target"
+      cp -a -- "$source"/. "$target"/
+    else
+      copy_file "$source" "$target"
+    fi
+  done
+  shopt -u nullglob dotglob
+}
+
+retire_legacy_skills() {
+  local target="$runtime_dir/skills"
+  local backup="$state_dir/legacy-skills"
+
+  [[ -e "$target" || -L "$target" ]] || return 0
+
+  if [[ -e "$backup" || -L "$backup" ]]; then
+    echo "Cannot preserve legacy OpenCode skills: $backup already exists" >&2
+    exit 1
+  fi
+
+  mkdir -p -- "$state_dir"
+  mv -- "$target" "$backup"
+  echo "Preserved legacy OpenCode skills at $backup" >&2
+}
+
+preserve_legacy_checkout() {
+  local backup="$state_dir/legacy-config.git"
+
+  [[ -e "$runtime_dir/.git" ]] || return 0
+  if [[ -e "$backup" ]]; then
+    echo "Cannot preserve OpenCode checkout: $backup already exists" >&2
+    exit 1
+  fi
+
+  mkdir -p -- "$state_dir"
+  mv -- "$runtime_dir/.git" "$backup"
+  echo "Preserved old OpenCode Git metadata at $backup" >&2
+}
+
+mkdir -p -- "$runtime_dir"
+retire_legacy_skills
+preserve_legacy_checkout
+
+for file in AGENTS.md dcp.jsonc notification-ntfy.json opencode.json tui.json; do
+  copy_file "$source_dir/$file" "$runtime_dir/$file"
+done
+
+for directory in agents commands themes; do
+  copy_declared_entries "$directory"
+done

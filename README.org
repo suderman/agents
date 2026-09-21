@@ -1,0 +1,47 @@
+#+title: Personal agent configuration
+
+* Personal agent configuration
+
+This repository is checked out at =~/.agents=. It contains personally curated agent configuration and is the source of truth.
+
+Harness-owned directories are mutable realizations of that configuration. Bootstrap scripts apply curated decisions outward. Runtime state never synchronizes back automatically.
+
+** Layout
+
+#+begin_src text
+~/.agents/
+├── skills/       shared skills consumed in place
+├── pi/           curated Pi configuration and bootstrap
+└── opencode/     curated OpenCode configuration and bootstrap
+#+end_src
+
+Home Manager owns installation, activation, persistence, secrets, services, and machine integration in =/etc/nixos=. Pi owns =~/.pi/agent=. OpenCode owns =~/.config/opencode=. Both application directories stay writable, and neither points back into this repository.
+
+Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessions=. The Pi wrapper sets =PI_CODING_AGENT_SESSION_DIR= so replacing or remounting =~/.pi/agent= cannot invalidate an active session path.
+
+Shared skills live only in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees.
+
+** Bootstrap
+
+Home Manager clones this repository into =~/.agents= when needed, then runs both scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
+
+#+begin_src sh
+~/.agents/pi/bootstrap
+~/.agents/opencode/bootstrap
+#+end_src
+
+Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, or =OPENCODE_DIR= to test against another destination.
+
+Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. Other named files are refreshed as normal writable copies. Named entries under =extensions/=, =prompts/=, and =themes/= are copied without deleting unrelated entries.
+
+OpenCode's bootstrap refreshes its named config files and named entries under =agents/=, =commands/=, and =themes/=. It leaves all other runtime files alone. During migration from the old configuration checkout, it moves =.git= to =~/.local/state/opencode/legacy-config.git= before writing the runtime copy.
+
+On the first run, each bootstrap removes its old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come only from =~/.agents/skills=.
+
+Both scripts are safe to run repeatedly. They do not delete unknown packages, plugins, extensions, or application state.
+
+** Secrets and managed integrations
+
+Secrets stay in agenix and reach each mutable home through Home Manager-generated =.env= files. Do not add those files here.
+
+Herdr owns its Pi and OpenCode integration files. Those files belong in the mutable application homes and are deliberately absent from this repository. Reinstalling or updating a Herdr integration must not change =~/.agents=.
