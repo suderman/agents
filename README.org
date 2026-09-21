@@ -1,5 +1,3 @@
-#+title: Personal agent configuration
-
 * Personal agent configuration
 
 This repository is checked out at =~/.agents=. It contains personally curated agent configuration and is the source of truth.
