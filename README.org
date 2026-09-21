@@ -8,6 +8,7 @@ Harness-owned directories are mutable realizations of that configuration. Bootst
 
 #+begin_src text
 ~/.agents/
+├── flake.nix     Pi and OpenCode packages
 ├── skills/       shared skills consumed in place
 ├── pi/           curated Pi configuration and bootstrap
 └── opencode/     curated OpenCode configuration and bootstrap
@@ -20,6 +21,16 @@ Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessio
 Inbox drop-zone prompts live in =pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
 
 Shared skills live only in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees.
+
+** Packages
+
+The flake re-exports Pi and OpenCode from [[https://github.com/numtide/llm-agents.nix][Numtide's llm-agents flake]]. Pi is the default package.
+
+#+begin_src sh
+nix build .#pi .#opencode
+nix run .#pi
+nix run .#opencode
+#+end_src
 
 ** Bootstrap
 
