@@ -6,8 +6,11 @@
 
     "editor_open": "<leader>e",
     "model_list": "<leader>m",
-    "command_list": "<leader>p,ctrl+p",
+    "command_list": "<leader><leader>",
     "agent_list": "<leader>a",
+    "agent_cycle": "ctrl+p",
+
+    "prompt.autocomplete.complete": "tab",
 
     "session_new": "<leader>n",
     "session_list": "<leader>k",
