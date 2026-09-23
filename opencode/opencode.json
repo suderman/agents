@@ -5,7 +5,7 @@
   "lsp": true,
   "model": "minimax-coding-plan/MiniMax-M3",
   "small_model": "minimax-coding-plan/MiniMax-M2.7",
-  "default_agent": "mini",
+  "default_agent": "luna",
   "agent": {
     "build": {
       "model": "openai/gpt-6-sol",
@@ -63,6 +63,14 @@
       "models": {
         "gpt-6-sol": {
           "name": "GPT-6 Sol",
+          "reasoning": true,
+          "options": {
+            "reasoningEffort": "medium",
+            "reasoningSummary": "auto"
+          }
+        },
+        "gpt-6-luna": {
+          "name": "GPT-6 Luna",
           "reasoning": true,
           "options": {
             "reasoningEffort": "medium",

@@ -18,6 +18,11 @@ Instruction priority:
 When instructions conflict, follow the higher-priority source and briefly note
 the conflict if it affects the result.
 
+## Default OpenCode agent
+
+Luna is the default primary agent. It uses `openai/gpt-6-luna` with high
+reasoning effort, performs implementation directly, and does not delegate work.
+
 ---
 
 ## Core principles

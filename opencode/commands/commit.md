@@ -1,6 +1,6 @@
 ---
 description: Commit the currently staged changes
-agent: mini
+agent: luna
 ---
 
 Commit the currently staged changes only.
