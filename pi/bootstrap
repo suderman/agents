@@ -161,7 +161,7 @@ retire_legacy_skills
 materialize_legacy_facade
 merge_settings
 
-for file in AGENTS.md keybindings.json mcp.json models.json settings-extensions.json; do
+for file in AGENTS.md keybindings.json mcp-adapter.json models.json settings-extensions.json; do
   copy_file "$source_dir/$file" "$runtime_dir/$file"
 done
 
