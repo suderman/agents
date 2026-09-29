@@ -127,6 +127,18 @@ merge_settings() {
   trap - RETURN
 }
 
+retire_legacy_mcp() {
+  local legacy="$runtime_dir/mcp.json"
+  [[ -e "$legacy" || -L "$legacy" ]] || return 0
+
+  if [[ ! -f "$legacy" ]] || ! cmp -s -- "$legacy" "$runtime_dir/mcp-adapter.json"; then
+    echo "Cannot retire legacy Pi MCP config: $legacy differs from mcp-adapter.json; merge it manually" >&2
+    exit 1
+  fi
+
+  rm -- "$legacy"
+}
+
 copy_declared_entries() {
   local relative="$1"
   local source target temporary
@@ -161,9 +173,11 @@ retire_legacy_skills
 materialize_legacy_facade
 merge_settings
 
-for file in AGENTS.md keybindings.json mcp-adapter.json models.json settings-extensions.json; do
+for file in AGENTS.md keybindings.json mcp-adapter.json models.json pi-fff.json settings-extensions.json; do
   copy_file "$source_dir/$file" "$runtime_dir/$file"
 done
+
+retire_legacy_mcp
 
 for directory in extensions prompts themes; do
   copy_declared_entries "$directory"
