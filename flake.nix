@@ -6,7 +6,7 @@
   outputs = {llm-agents, ...}: {
     packages =
       builtins.mapAttrs (_: packages: {
-        inherit (packages) opencode pi;
+        inherit (packages) hermes-agent opencode pi;
         default = packages.pi;
       })
       llm-agents.packages;

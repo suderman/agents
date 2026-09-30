@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+export HERMES_HOME="$fixture/home"
+mkdir -p "$HERMES_HOME/skills/local" "$HERMES_HOME/cron"
+printf 'secret\n' > "$HERMES_HOME/.env"
+chmod 600 "$HERMES_HOME/.env"
+printf 'state\n' > "$HERMES_HOME/state.db"
+printf 'jobs\n' > "$HERMES_HOME/cron/jobs.json"
+printf 'skill\n' > "$HERMES_HOME/skills/local/SKILL.md"
+ln -s "$source_dir/config.yaml" "$HERMES_HOME/config.yaml"
+cp "$source_dir/SOUL.md" "$HERMES_HOME/SOUL.md"
+chmod a-w "$HERMES_HOME/SOUL.md"
+"$source_dir/bootstrap"
+for file in config.yaml SOUL.md; do
+  [[ -f "$HERMES_HOME/$file" && ! -L "$HERMES_HOME/$file" && -w "$HERMES_HOME/$file" ]]
+  cmp "$source_dir/$file" "$HERMES_HOME/$file"
+done
+find "$HERMES_HOME" -type f -exec sha256sum {} + | sort > "$fixture/before"
+stat -c '%n %i %Y %a' "$HERMES_HOME"/* "$HERMES_HOME/.env" > "$fixture/metadata"
+"$source_dir/bootstrap"
+find "$HERMES_HOME" -type f -exec sha256sum {} + | sort > "$fixture/after"
+cmp "$fixture/before" "$fixture/after"
+stat -c '%n %i %Y %a' "$HERMES_HOME"/* "$HERMES_HOME/.env" | cmp "$fixture/metadata" -
+[[ $(<"$HERMES_HOME/.env") == secret ]]
+[[ $(<"$HERMES_HOME/state.db") == state ]]
+[[ $(<"$HERMES_HOME/cron/jobs.json") == jobs ]]
+[[ $(<"$HERMES_HOME/skills/local/SKILL.md") == skill ]]
+if HERMES_HOME="$HOME" "$source_dir/bootstrap" 2>/dev/null; then
+  echo 'Unsafe destination accepted' >&2
+  exit 1
+fi
+printf 'Hermes bootstrap checks passed\n'

@@ -1,0 +1,11 @@
+model:
+  default: gpt-6-luna
+  provider: custom
+  base_url: https://codex-lb.kit/v1
+  api_key: ${CODEX_LB_API_KEY}
+  api_mode: chat_completions
+agent:
+  reasoning_effort: high
+skills:
+  external_dirs:
+    - ~/.agents/skills

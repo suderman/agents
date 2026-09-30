@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+runtime_dir="${HERMES_HOME:-$HOME/.hermes}"
+
+case "$runtime_dir" in
+  ""|/|"$HOME"|"$source_dir")
+    echo "Refusing unsafe Hermes destination: $runtime_dir" >&2
+    exit 1
+    ;;
+esac
+
+mkdir -p -- "$runtime_dir"
+for file in config.yaml SOUL.md; do
+  target="$runtime_dir/$file"
+  if [[ ! -L "$target" && -f "$target" && -w "$target" ]] && cmp -s -- "$source_dir/$file" "$target"; then
+    continue
+  fi
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' EXIT
+  cp --dereference --preserve=mode -- "$source_dir/$file" "$temporary"
+  chmod u+rw -- "$temporary"
+  mv -fT -- "$temporary" "$target"
+  trap - EXIT
+done

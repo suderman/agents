@@ -8,48 +8,55 @@ Harness-owned directories are mutable realizations of that configuration. Bootst
 
 #+begin_src text
 ~/.agents/
-├── flake.nix     Pi and OpenCode packages
+├── flake.nix     Pi, OpenCode, and Hermes packages
 ├── skills/       shared skills consumed in place
 ├── pi/           curated Pi configuration and bootstrap
-└── opencode/     curated OpenCode configuration and bootstrap
+├── opencode/     curated OpenCode configuration and bootstrap
+└── hermes/       curated Hermes configuration and bootstrap
 #+end_src
 
-Home Manager owns installation, activation, persistence, secrets, services, and machine integration in =/etc/nixos=. Pi owns =~/.pi/agent=. OpenCode owns =~/.config/opencode=. Both application directories stay writable, and neither points back into this repository.
+Home Manager owns installation, activation, persistence, secrets, services, and machine integration in =/etc/nixos=. Pi owns =~/.pi/agent=. OpenCode owns =~/.config/opencode=. Hermes owns =~/.hermes=. These application directories stay writable and do not point back into this repository.
 
 Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessions=. The Pi wrapper sets =PI_CODING_AGENT_SESSION_DIR= so replacing or remounting =~/.pi/agent= cannot invalidate an active session path.
 
 Inbox drop-zone prompts live in =pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
 
-Shared skills live only in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees.
+Shared skills live in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees. Hermes uses native =skills.external_dirs= and keeps its own =skills/= for bundled, installed, and generated skills. The skill list gives local entries precedence, but loading a bare name refuses local/external collisions. Keep names unique or load a categorized path explicitly. External skills are not write-protected; Hermes instructions require approval before changing curated skills. Skills that name Pi-only tools need adaptation before Hermes can use those tools.
 
 ** Packages
 
-The flake re-exports Pi and OpenCode from [[https://github.com/numtide/llm-agents.nix][Numtide's llm-agents flake]]. Pi is the default package.
+The flake re-exports Pi, OpenCode, and Hermes from [[https://github.com/numtide/llm-agents.nix][Numtide's llm-agents flake]]. Pi is the default package.
 
 #+begin_src sh
-nix build .#pi .#opencode
+nix build .#pi .#opencode .#hermes-agent
 nix run .#pi
 nix run .#opencode
+nix run .#hermes-agent
 #+end_src
 
 ** Bootstrap
 
-Home Manager clones this repository into =~/.agents= when needed, then runs both scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
+Home Manager clones this repository into =~/.agents= when needed, then runs enabled harness bootstrap scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
 
 #+begin_src sh
 ~/.agents/pi/bootstrap
 ~/.agents/opencode/bootstrap
+~/.agents/hermes/bootstrap
 #+end_src
 
-Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, or =OPENCODE_DIR= to test against another destination.
+Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, =OPENCODE_DIR=, or =HERMES_HOME= to test against another destination.
 
 Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. Other named files are refreshed as normal writable copies. Named entries under =extensions/=, =prompts/=, and =themes/= are copied without deleting unrelated entries.
 
 OpenCode's bootstrap refreshes its named config files and named entries under =agents/=, =commands/=, and =themes/=. It leaves all other runtime files alone. During migration from the old configuration checkout, it moves =.git= to =~/.local/state/opencode/legacy-config.git= before writing the runtime copy.
 
-On the first run, each bootstrap removes its old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come only from =~/.agents/skills=.
+Hermes refreshes only =config.yaml= and =SOUL.md= as atomic writable copies, skipping unchanged files. Native setup, config, and dashboard edits to those files are temporary until copied into the curated source. It leaves credentials, auth, sessions, jobs, memories, databases, profiles, and local skills alone. Run =hermes/test-bootstrap= for isolated preservation and repeat-run checks.
 
-Both scripts are safe to run repeatedly. They do not delete unknown packages, plugins, extensions, or application state.
+Hermes defaults to =gpt-6-luna= with high reasoning through codex-lb. Auxiliary calls use native routing. Its instructions send substantial task execution to Herdr/Pi with Pi's stronger configured model. No automatic jobs, fleet gateway, dashboard, or Desktop service is enabled by this configuration. NixOS retains the former =~/.local/share/hermes= and Desktop state for rollback without importing them into the fresh home.
+
+On the first run, Pi and OpenCode's bootstraps remove their old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come only from =~/.agents/skills=.
+
+All scripts are safe to run repeatedly. They do not delete unknown packages, plugins, extensions, or application state.
 
 ** Secrets and managed integrations
 
