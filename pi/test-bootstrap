@@ -40,4 +40,21 @@ stats="$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGE
 [[ "$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")" == "$stats" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
 
-printf 'Pi bootstrap checks passed: native MCP, codemode, preserved state/theme, repeat runs.\n'
+"$source_dir/fix-dcp-package"
+manifest="$PI_CODING_AGENT_DIR/npm/node_modules/@pi-vault/pi-dcp/package.json"
+mkdir -p -- "$(dirname -- "$manifest")"
+printf '%s\n' '{"dependencies":{"typebox":"^1.3.19","unrelated":"1.0.0"},"peerDependencies":{"host":"*"},"devDependencies":{"typebox":"^1.3.19"}}' >"$manifest"
+chmod 0640 "$manifest"
+"$source_dir/fix-dcp-package"
+jq -e '
+  .dependencies.typebox == null and .peerDependencies.typebox == "*" and
+  .dependencies.unrelated == "1.0.0" and .peerDependencies.host == "*" and
+  .devDependencies.typebox == "^1.3.19"
+' "$manifest" >/dev/null
+[[ "$(stat -c '%a' "$manifest")" == 640 ]]
+first="$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")"
+"$source_dir/fix-dcp-package"
+[[ "$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")" == "$first" ]]
+[[ "$(runtime_hashes)" == "$before" ]]
+
+printf 'Pi bootstrap checks passed: native MCP, codemode, state/theme, package repair, repeat runs.\n'

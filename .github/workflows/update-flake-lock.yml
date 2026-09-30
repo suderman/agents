@@ -35,6 +35,7 @@ jobs:
       - name: Check and build packages
         run: |
           nix flake check --all-systems
+          pi/test-bootstrap
           nix build .#pi .#opencode .#hermes-agent --no-link
           nix run .#pi -- --version
           pi/test-codemode "$(nix eval --raw .#pi.outPath)"

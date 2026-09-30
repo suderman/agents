@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+manifest="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/npm/node_modules/@pi-vault/pi-dcp/package.json"
+# Correct upstream's host dependency declaration without changing extension code.
+[[ -f "$manifest" ]] || exit 0
+jq -e '.dependencies | has("typebox")' "$manifest" >/dev/null || exit 0
+
+temporary="$(mktemp "$manifest.tmp.XXXXXX")"
+trap 'rm -f -- "$temporary"' EXIT
+jq '.peerDependencies.typebox = "*" | del(.dependencies.typebox)' "$manifest" >"$temporary"
+chmod --reference="$manifest" -- "$temporary"
+mv -fT -- "$temporary" "$manifest"
