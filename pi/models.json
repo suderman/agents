@@ -7,6 +7,23 @@
       "apiKey": "$CODEX_LB_API_KEY",
       "models": [
         {
+          "id": "gpt-6.1-sol",
+          "name": "GPT-6.1 Sol (codex-lb)",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "input": ["text", "image"],
+          "contextWindow": 1050000,
+          "maxTokens": 128000
+        },
+        {
           "id": "gpt-6-sol",
           "name": "GPT-6 Sol (codex-lb)",
           "reasoning": true,
