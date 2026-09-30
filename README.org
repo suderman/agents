@@ -34,6 +34,8 @@ nix run .#opencode
 nix run .#hermes-agent
 #+end_src
 
+GitHub Actions updates =flake.lock= daily at 02:00 MST (09:00 UTC, 03:00 MDT). The workflow checks all package outputs, builds the three Linux packages, and runs their version commands before committing a changed lock. It also supports manual runs. These commits do not install packages on hosts; NixOS must update its =agents= input and rebuild to use them.
+
 ** Bootstrap
 
 Home Manager clones this repository into =~/.agents= when needed, then runs enabled harness bootstrap scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
