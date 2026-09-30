@@ -37,6 +37,7 @@ jobs:
           nix flake check --all-systems
           nix build .#pi .#opencode .#hermes-agent --no-link
           nix run .#pi -- --version
+          pi/test-codemode "$(nix eval --raw .#pi.outPath)"
           nix run .#opencode -- --version
           nix run .#hermes-agent -- --version
 

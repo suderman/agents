@@ -5,9 +5,20 @@
 
   outputs = {llm-agents, ...}: {
     packages =
-      builtins.mapAttrs (_: packages: {
-        inherit (packages) hermes-agent opencode pi;
-        default = packages.pi;
+      builtins.mapAttrs (_: packages: let
+        # Numtide's Bun binary omits codemode's worker; use its supported Node build.
+        pi = (packages.pi.override {useBun = false;}).overrideAttrs (old: {
+          postInstall =
+            old.postInstall
+            + ''
+              wrapProgram "$out/bin/pi" \
+                --set PI_PACKAGE_DIR "$out/lib/node_modules/@earendil-works/pi-coding-agent"
+            '';
+        });
+      in {
+        inherit (packages) hermes-agent opencode;
+        inherit pi;
+        default = pi;
       })
       llm-agents.packages;
   };

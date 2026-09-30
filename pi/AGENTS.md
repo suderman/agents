@@ -6,6 +6,12 @@
 - Prefer `nix shell` for temporary tools, or note when a package should be added to the flake.
 - Terminal-first workflow. Avoid GUI-dependent solutions unless the task requires one.
 
+## MCP tools
+
+- Use Pi's native MCP tools and `codemode`. Do not assume the old adapter's `mcp` or `mcpScript` tools exist.
+- Native MCP names are `mcp__<server>__<tool>`. Browser skills use older names such as `chrome-devtools_take_snapshot`; call the registered `mcp__chrome-devtools__take_snapshot` instead.
+- Use ordinary tools for single calls. Use codemode for parallel calls or to filter large results before returning them. Keep default codemode mode `on`, so direct tools remain available.
+
 ## Principles
 
 **Verify, don't assume.** Don't rely on what you think you know. Check your work. Run the command. Read the file. Show the output. "Should work now" is a guess, not a result.

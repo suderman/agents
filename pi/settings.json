@@ -11,7 +11,8 @@
     "codex-lb/gpt-6-astra:high"
   ],
   "transport": "sse",
-  "theme": "catppuccin-macchiato",
+  "defaultTools": ["+codemode"],
+  "theme": "stylix",
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
   "subagents": {
@@ -57,7 +58,6 @@
   "packages": [
     "npm:@juicesharp/rpiv-btw",
     "npm:pi-web-access",
-    "npm:pi-mcp-adapter",
     "npm:pi-lens",
     "npm:@pi-vault/pi-dcp",
     "npm:pi-subagents",

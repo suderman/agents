@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+export PI_CODING_AGENT_DIR="$fixture/agent"
+export XDG_STATE_HOME="$fixture/state"
+mkdir -p "$PI_CODING_AGENT_DIR/themes"
+
+printf '{"runtimeOnly":true,"lastChangelogVersion":"test"}\n' >"$PI_CODING_AGENT_DIR/settings.json"
+printf 'private runtime secret\n' >"$PI_CODING_AGENT_DIR/.env"
+printf 'saved runtime state\n' >"$PI_CODING_AGENT_DIR/runtime-state"
+printf '{"oldAdapterState":true}\n' >"$PI_CODING_AGENT_DIR/mcp-adapter.json"
+printf '{"name":"stylix","generated":true}\n' >"$PI_CODING_AGENT_DIR/themes/stylix.json"
+
+runtime_hashes() {
+  sha256sum "$PI_CODING_AGENT_DIR/"{.env,runtime-state,mcp-adapter.json,themes/stylix.json}
+}
+
+before="$(runtime_hashes)"
+"$source_dir/bootstrap"
+cmp "$source_dir/mcp.json" "$PI_CODING_AGENT_DIR/mcp.json"
+jq -e '
+  .runtimeOnly == true and .lastChangelogVersion == "test" and
+  .defaultTools == ["+codemode"] and .theme == "stylix" and
+  (.packages | index("npm:pi-mcp-adapter") == null)
+' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null
+jq -e '
+  (.mcpServers | keys | length) == 4 and
+  .mcpServers["chrome-devtools"].exposure == "direct"
+' "$PI_CODING_AGENT_DIR/mcp.json" >/dev/null
+[[ ! -L "$PI_CODING_AGENT_DIR/mcp.json" && -w "$PI_CODING_AGENT_DIR/mcp.json" ]]
+[[ "$(runtime_hashes)" == "$before" ]]
+
+first="$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
+stats="$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
+"$source_dir/bootstrap"
+[[ "$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")" == "$first" ]]
+[[ "$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")" == "$stats" ]]
+[[ "$(runtime_hashes)" == "$before" ]]
+
+printf 'Pi bootstrap checks passed: native MCP, codemode, preserved state/theme, repeat runs.\n'

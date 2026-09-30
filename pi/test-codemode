@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+package_dir="${1:?Pass the built Pi package path}/lib/node_modules/@earendil-works/pi-coding-agent"
+IFS= read -r node < "$package_dir/dist/cli.js"
+node="${node#\#!}"
+export PI_PACKAGE_DIR="$package_dir"
+
+"$node" - <<'JS'
+import assert from "node:assert/strict";
+const { executeCodemode } = await import(`${process.env.PI_PACKAGE_DIR}/dist/extensions/codemode/execute.js`);
+const result = await executeCodemode("smoke", { code: 'text("PI_CODEMODE_OK")' }, new AbortController().signal);
+assert.equal(result.isError, undefined, JSON.stringify(result));
+assert(result.content.some(item => item.type === "text" && item.text === "PI_CODEMODE_OK"));
+console.log("Native codemode worker check passed.");
+JS

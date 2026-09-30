@@ -8,7 +8,7 @@
         "--browser-url=http://127.0.0.1:9222",
         "--no-usage-statistics"
       ],
-      "directTools": true
+      "exposure": "direct"
     },
     "context7": {
       "url": "https://mcp.context7.com/mcp",
