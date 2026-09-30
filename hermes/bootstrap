@@ -11,16 +11,46 @@ case "$runtime_dir" in
     ;;
 esac
 
+command -v yq >/dev/null || {
+  echo "Hermes bootstrap requires Mike Farah's yq v4 (Nix package yq-go)" >&2
+  exit 1
+}
+
 mkdir -p -- "$runtime_dir"
-for file in config.yaml SOUL.md; do
-  target="$runtime_dir/$file"
-  if [[ ! -L "$target" && -f "$target" && -w "$target" ]] && cmp -s -- "$source_dir/$file" "$target"; then
-    continue
-  fi
-  temporary="$(mktemp "${target}.tmp.XXXXXX")"
-  trap 'rm -f -- "$temporary"' EXIT
-  cp --dereference --preserve=mode -- "$source_dir/$file" "$temporary"
-  chmod u+rw -- "$temporary"
+target="$runtime_dir/config.yaml"
+existing="$target"
+if [[ ! -e "$target" && ! -L "$target" ]]; then
+  existing=-
+fi
+temporary="$(mktemp "${target}.tmp.XXXXXX")"
+trap 'rm -f -- "$temporary"' EXIT
+
+# Maps merge recursively. Repo-declared scalars and lists replace runtime values.
+printf '{}\n' | yq eval-all --exit-status '
+  [.] | select(
+    length == 2 and
+    ((.[0] | tag) == "!!map" or (.[0] | tag) == "!!null") and
+    (.[1] | tag) == "!!map"
+  ) | (.[0] // {}) * .[1]
+' "$existing" "$source_dir/config.yaml" > "$temporary"
+if [[ -e "$target" ]]; then
+  chmod --reference="$target" -- "$temporary"
+fi
+chmod u+rw -- "$temporary"
+if [[ ! -L "$target" && -f "$target" && -w "$target" ]] && cmp -s -- "$temporary" "$target"; then
+  rm -f -- "$temporary"
+else
   mv -fT -- "$temporary" "$target"
-  trap - EXIT
-done
+fi
+trap - EXIT
+
+target="$runtime_dir/SOUL.md"
+if [[ ! -L "$target" && -f "$target" && -w "$target" ]] && cmp -s -- "$source_dir/SOUL.md" "$target"; then
+  exit 0
+fi
+temporary="$(mktemp "${target}.tmp.XXXXXX")"
+trap 'rm -f -- "$temporary"' EXIT
+cp --dereference --preserve=mode -- "$source_dir/SOUL.md" "$temporary"
+chmod u+rw -- "$temporary"
+mv -fT -- "$temporary" "$target"
+trap - EXIT

@@ -28,6 +28,75 @@ stat -c '%n %i %Y %a' "$HERMES_HOME"/* "$HERMES_HOME/.env" | cmp "$fixture/metad
 [[ $(<"$HERMES_HOME/state.db") == state ]]
 [[ $(<"$HERMES_HOME/cron/jobs.json") == jobs ]]
 [[ $(<"$HERMES_HOME/skills/local/SKILL.md") == skill ]]
+# Runtime-only settings must survive at every managed nesting level.
+printf '%s\n' \
+  '# Keep my runtime settings' \
+  'model:' \
+  '  default: old-model' \
+  '  provider: old-provider' \
+  '  temperature: 0.7 # Keep this comment' \
+  'agent:' \
+  '  reasoning_effort: low' \
+  '  max_turns: 42' \
+  'skills:' \
+  '  external_dirs: [~/other-skills]' \
+  '  create_dir: ~/local-skills' \
+  'mcp_servers:' \
+  '  local:' \
+  '    command: local-mcp' \
+  '    args: [--quiet, --local]' \
+  'custom:' \
+  '  enabled: false' \
+  '  empty: null' > "$fixture/runtime.yaml"
+chmod 600 "$fixture/runtime.yaml"
+cp "$fixture/runtime.yaml" "$fixture/runtime-before.yaml"
+ln -sf "$fixture/runtime.yaml" "$HERMES_HOME/config.yaml"
+"$source_dir/bootstrap"
+[[ ! -L "$HERMES_HOME/config.yaml" ]]
+cmp "$fixture/runtime-before.yaml" "$fixture/runtime.yaml"
+# The API key must remain a literal environment reference.
+# shellcheck disable=SC2016
+yq --exit-status '
+  .model.default == "gpt-6-luna" and
+  .model.provider == "custom" and
+  .model.api_key == "${CODEX_LB_API_KEY}" and
+  .model.temperature == 0.7 and
+  .agent.reasoning_effort == "high" and
+  .agent.max_turns == 42 and
+  (.skills.external_dirs | length) == 1 and
+  .skills.external_dirs[0] == "~/.agents/skills" and
+  .skills.create_dir == "~/local-skills" and
+  .mcp_servers.local.command == "local-mcp" and
+  (.mcp_servers.local.args | length) == 2 and
+  .mcp_servers.local.args[0] == "--quiet" and
+  .mcp_servers.local.args[1] == "--local" and
+  .custom.enabled == false and (.custom | has("empty"))
+' "$HERMES_HOME/config.yaml" >/dev/null
+grep -q 'Keep my runtime settings' "$HERMES_HOME/config.yaml"
+grep -q 'Keep this comment' "$HERMES_HOME/config.yaml"
+[[ $(stat -c '%a' "$HERMES_HOME/config.yaml") == 600 ]]
+cp "$HERMES_HOME/config.yaml" "$fixture/merged.yaml"
+stat -c '%i %Y %a' "$HERMES_HOME/config.yaml" > "$fixture/merged-metadata"
+"$source_dir/bootstrap"
+cmp "$fixture/merged.yaml" "$HERMES_HOME/config.yaml"
+stat -c '%i %Y %a' "$HERMES_HOME/config.yaml" | cmp "$fixture/merged-metadata" -
+
+# A fresh home needs no existing YAML.
+HERMES_HOME="$fixture/fresh" "$source_dir/bootstrap"
+yq --exit-status '.model.default == "gpt-6-luna"' "$fixture/fresh/config.yaml" >/dev/null
+
+# Invalid, non-mapping, and multi-document YAML must not be overwritten.
+for invalid in 'model: [' '[one, two]' '42' $'{}\n---\n{}'; do
+  printf '%s\n' "$invalid" > "$HERMES_HOME/config.yaml"
+  cp "$HERMES_HOME/config.yaml" "$fixture/invalid.yaml"
+  if "$source_dir/bootstrap" 2>/dev/null; then
+    echo 'Invalid runtime YAML accepted' >&2
+    exit 1
+  fi
+  cmp "$fixture/invalid.yaml" "$HERMES_HOME/config.yaml"
+  [[ -z $(find "$HERMES_HOME" -name '*.tmp.*' -print) ]]
+done
+
 if HERMES_HOME="$HOME" "$source_dir/bootstrap" 2>/dev/null; then
   echo 'Unsafe destination accepted' >&2
   exit 1
