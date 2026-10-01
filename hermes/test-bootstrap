@@ -38,6 +38,12 @@ printf '%s\n' \
   'agent:' \
   '  reasoning_effort: low' \
   '  max_turns: 42' \
+  'browser:' \
+  '  cloud_provider: old-provider' \
+  '  command_timeout: 75' \
+  '  camofox:' \
+  '    managed_persistence: false' \
+  '    rewrite_loopback_urls: false' \
   'skills:' \
   '  external_dirs: [~/other-skills]' \
   '  create_dir: ~/local-skills' \
@@ -63,6 +69,10 @@ yq --exit-status '
   .model.temperature == 0.7 and
   .agent.reasoning_effort == "high" and
   .agent.max_turns == 42 and
+  .browser.cloud_provider == "camofox" and
+  .browser.command_timeout == 75 and
+  .browser.camofox.managed_persistence == true and
+  .browser.camofox.rewrite_loopback_urls == false and
   (.skills.external_dirs | length) == 1 and
   .skills.external_dirs[0] == "~/.agents/skills" and
   .skills.create_dir == "~/local-skills" and

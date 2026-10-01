@@ -6,6 +6,10 @@ model:
   api_mode: chat_completions
 agent:
   reasoning_effort: high
+browser:
+  cloud_provider: camofox
+  camofox:
+    managed_persistence: true
 skills:
   external_dirs:
     - ~/.agents/skills
