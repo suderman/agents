@@ -11,11 +11,13 @@ mkdir -p "$PI_CODING_AGENT_DIR/themes"
 printf '{"runtimeOnly":true,"lastChangelogVersion":"test"}\n' >"$PI_CODING_AGENT_DIR/settings.json"
 printf 'private runtime secret\n' >"$PI_CODING_AGENT_DIR/.env"
 printf 'saved runtime state\n' >"$PI_CODING_AGENT_DIR/runtime-state"
-printf '{"oldAdapterState":true}\n' >"$PI_CODING_AGENT_DIR/mcp-adapter.json"
+for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
+  printf '{"oldAdapterState":true}\n' >"$PI_CODING_AGENT_DIR/$file"
+done
 printf '{"name":"stylix","generated":true}\n' >"$PI_CODING_AGENT_DIR/themes/stylix.json"
 
 runtime_hashes() {
-  sha256sum "$PI_CODING_AGENT_DIR/"{.env,runtime-state,mcp-adapter.json,themes/stylix.json}
+  sha256sum "$PI_CODING_AGENT_DIR/"{.env,runtime-state,themes/stylix.json}
 }
 
 before="$(runtime_hashes)"
@@ -28,10 +30,15 @@ jq -e '
 ' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null
 jq -e '
   (.mcpServers | keys | length) == 4 and
-  .mcpServers["chrome-devtools"].exposure == "direct"
+  .mcpServers["chrome-devtools"].exposure == "direct" and
+  ([.mcpServers[] | .description | type == "string" and length > 0] | all)
 ' "$PI_CODING_AGENT_DIR/mcp.json" >/dev/null
 [[ ! -L "$PI_CODING_AGENT_DIR/mcp.json" && -w "$PI_CODING_AGENT_DIR/mcp.json" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
+for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
+  [[ ! -e "$PI_CODING_AGENT_DIR/$file" && ! -L "$PI_CODING_AGENT_DIR/$file" ]]
+done
+grep -q 'mcp__chrome_devtools__take_snapshot' "$PI_CODING_AGENT_DIR/AGENTS.md"
 
 first="$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
 stats="$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"

@@ -9,7 +9,7 @@
 ## MCP tools
 
 - Use Pi's native MCP tools and `codemode`. Do not assume the old adapter's `mcp` or `mcpScript` tools exist.
-- Native MCP names are `mcp__<server>__<tool>`. Browser skills use older names such as `chrome-devtools_take_snapshot`; call the registered `mcp__chrome-devtools__take_snapshot` instead.
+- Native MCP names are `mcp__<server>__<tool>`, with hyphens normalized to underscores in Pi 0.99.2. Browser skills use older names such as `chrome-devtools_take_snapshot`; use the registered tool name, such as `mcp__chrome_devtools__take_snapshot`. Discover unlisted tools with `searchTools()` and read server instructions with `describeNamespace()`.
 - Use ordinary tools for single calls. Use codemode for parallel calls or to filter large results before returning them. Keep default codemode mode `on`, so direct tools remain available.
 
 ## Principles

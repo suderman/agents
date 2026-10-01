@@ -52,7 +52,7 @@ Pi's bootstrap deep-merges the declared =settings.json= into the current runtime
 
 The NixOS Pi wrapper runs =pi/fix-dcp-package= before startup. It moves pi-dcp's incorrectly published TypeBox dependency to =peerDependencies= with a =*= range. Corrected releases are left unchanged; extension code and shared npm dependencies are not touched.
 
-Pi uses native =mcp.json= for Chrome DevTools, Context7, gh_grep, and MiniMax. Chrome tools are exposed directly; the other servers use native codemode discovery. =defaultTools: ["+codemode"]= keeps ordinary tools available and adds sandboxed scripts for parallel calls and filtering. The old MCP adapter is no longer loaded; its runtime config and cache remain untouched for rollback.
+Pi uses native =mcp.json= for Chrome DevTools, Context7, gh_grep, and MiniMax. Chrome tools are exposed directly; the other servers use native codemode discovery. =defaultTools: ["+codemode"]= keeps ordinary tools available and adds sandboxed scripts for parallel calls and filtering. The old MCP adapter is no longer loaded. Bootstrap removes its retired =mcp-adapter.json=, =mcp-cache.json=, and =mcp-npx-cache.json= files; migration backups remain untouched.
 
 Home Manager generates =themes/stylix.json= after Pi's bootstrap from its Stylix palette and the curated theme's existing color roles. Pi selects that fixed theme instead of the terminal-derived system theme. The generated file is a writable runtime copy, not a repository file or store symlink, and bootstrap preserves it.
 

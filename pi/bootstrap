@@ -165,6 +165,9 @@ for file in AGENTS.md keybindings.json mcp.json models.json pi-fff.json settings
   copy_file "$source_dir/$file" "$runtime_dir/$file"
 done
 
+# Native MCP replaces the retired adapter configuration and disposable caches.
+rm -f -- "$runtime_dir/"{mcp-adapter.json,mcp-cache.json,mcp-npx-cache.json}
+
 for directory in extensions prompts themes; do
   copy_declared_entries "$directory"
 done

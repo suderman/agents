@@ -1,6 +1,7 @@
 {
   "mcpServers": {
     "chrome-devtools": {
+      "description": "Inspect and control the local Chromium browser, including DOM, console, network, and screenshots.",
       "command": "npx",
       "args": [
         "-y",
@@ -11,15 +12,18 @@
       "exposure": "direct"
     },
     "context7": {
+      "description": "Look up current library and framework documentation and code examples.",
       "url": "https://mcp.context7.com/mcp",
       "headers": {
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
     },
     "gh_grep": {
+      "description": "Search public GitHub repositories for literal code patterns and real usage examples.",
       "url": "https://mcp.grep.app"
     },
     "minimax": {
+      "description": "Search the web and analyze images through MiniMax.",
       "command": "uvx",
       "args": ["--with", "mcp<2", "minimax-coding-plan-mcp", "-y"],
       "env": {
