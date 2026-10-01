@@ -36,6 +36,7 @@ jobs:
         run: |
           nix flake check --all-systems
           pi/test-bootstrap
+          tests/test-prompts
           nix shell nixpkgs#yq-go --command hermes/test-bootstrap
           nix build .#pi .#opencode .#hermes-agent --no-link
           nix run .#pi -- --version

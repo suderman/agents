@@ -23,6 +23,10 @@ runtime_hashes() {
 before="$(runtime_hashes)"
 "$source_dir/bootstrap"
 cmp "$source_dir/mcp.json" "$PI_CODING_AGENT_DIR/mcp.json"
+for name in commit commitall; do
+  cmp "$source_dir/../prompts/$name.md" "$PI_CODING_AGENT_DIR/prompts/$name.md"
+  [[ ! -L "$PI_CODING_AGENT_DIR/prompts/$name.md" && -w "$PI_CODING_AGENT_DIR/prompts/$name.md" ]]
+done
 jq -e '
   .runtimeOnly == true and .lastChangelogVersion == "test" and
   .defaultTools == ["+codemode"] and .theme == "stylix" and
@@ -42,9 +46,11 @@ grep -q 'mcp__chrome_devtools__take_snapshot' "$PI_CODING_AGENT_DIR/AGENTS.md"
 
 first="$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
 stats="$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
+prompts="$(sha256sum "$PI_CODING_AGENT_DIR/prompts/"*.md; stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/prompts/"*.md)"
 "$source_dir/bootstrap"
 [[ "$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")" == "$first" ]]
 [[ "$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")" == "$stats" ]]
+[[ "$(sha256sum "$PI_CODING_AGENT_DIR/prompts/"*.md; stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/prompts/"*.md)" == "$prompts" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
 
 "$source_dir/fix-dcp-package"
@@ -64,4 +70,4 @@ first="$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")"
 [[ "$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")" == "$first" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
 
-printf 'Pi bootstrap checks passed: native MCP, codemode, state/theme, package repair, repeat runs.\n'
+printf 'Pi bootstrap checks passed: native MCP, codemode, shared prompts, state/theme, package repair, repeat runs.\n'

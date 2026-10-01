@@ -156,6 +156,10 @@ command -v jq >/dev/null || {
   exit 1
 }
 
+# shellcheck source=../lib/shared-prompts.sh
+source "$source_dir/../lib/shared-prompts.sh"
+validate_shared_prompts "$source_dir/../prompts" "$source_dir/prompts"
+
 mkdir -p -- "$runtime_dir"
 retire_legacy_skills
 materialize_legacy_facade
@@ -171,3 +175,4 @@ rm -f -- "$runtime_dir/"{mcp-adapter.json,mcp-cache.json,mcp-npx-cache.json}
 for directory in extensions prompts themes; do
   copy_declared_entries "$directory"
 done
+copy_shared_prompts "$source_dir/../prompts" "$runtime_dir/prompts"

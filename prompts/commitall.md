@@ -22,7 +22,7 @@ Inspection commands to use before deciding:
 - `git ls-files --others --exclude-standard` for untracked files
 - `git log --oneline -n 5` if recent commit style helps
 
-For untracked files, inspect contents before staging. Use Pi `read` for text files, or safe file metadata commands when a file is binary.
+For untracked files, inspect contents before staging. Use the file-reading tool for text files, or safe file metadata commands when a file is binary.
 
 Process:
 

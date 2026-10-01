@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+# Copy only the bootstrap inputs so negative tests never edit curated files.
+mkdir -p "$fixture/repo"
+cp -a "$repo/"{pi,opencode,prompts,lib} "$fixture/repo/"
+export XDG_STATE_HOME="$fixture/state"
+
+for harness in pi opencode; do
+  runtime="$fixture/$harness"
+  if [[ "$harness" == pi ]]; then
+    export PI_CODING_AGENT_DIR="$runtime"
+    directory=prompts
+  else
+    export OPENCODE_CONFIG_DIR="$runtime"
+    directory=commands
+  fi
+  specific="$fixture/repo/$harness/$directory"
+  mkdir -p "$runtime/$directory" "$specific"
+  printf 'private secret\n' >"$runtime/.env"
+  printf 'saved state\n' >"$runtime/runtime-state"
+  printf 'local command\n' >"$runtime/$directory/local.md"
+  chmod 0600 "$runtime/.env"
+  preserved="$(sha256sum "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md"; stat -c '%i:%Y:%a' "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md")"
+  # A runtime symlink must become a writable copy without changing its target.
+  printf 'old runtime command\n' >"$fixture/old-$harness.md"
+  old_hash="$(sha256sum "$fixture/old-$harness.md")"
+  ln -s "$fixture/old-$harness.md" "$runtime/$directory/commit.md"
+  printf 'old harness command\n' >"$runtime/$directory/commitall.md"
+  printf '%s\n' '---' 'description: Harness-specific test' '---' 'Specific behavior.' >"$specific/only-$harness.md"
+  if [[ "$harness" == opencode ]]; then
+    printf '%s\n' '---' 'description: Harness-specific test' 'agent: luna' '---' 'Specific behavior.' >"$specific/only-$harness.md"
+  fi
+  # shellcheck disable=SC2016 # Test literal template syntax, not shell expansion.
+  printf '%s\n' '---' 'description: Echo supplied text' '---' 'Review $ARGUMENTS' >"$fixture/repo/prompts/arguments.md"
+
+  "$fixture/repo/$harness/bootstrap"
+  for name in commit commitall arguments; do
+    cmp "$fixture/repo/prompts/$name.md" "$runtime/$directory/$name.md"
+    [[ ! -L "$runtime/$directory/$name.md" && -w "$runtime/$directory/$name.md" ]]
+  done
+  cmp "$specific/only-$harness.md" "$runtime/$directory/only-$harness.md"
+  [[ "$(sha256sum "$fixture/old-$harness.md")" == "$old_hash" ]]
+  [[ "$(sha256sum "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md"; stat -c '%i:%Y:%a' "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md")" == "$preserved" ]]
+  first="$(sha256sum "$runtime/$directory/"*.md; stat -c '%i:%Y:%a' "$runtime/$directory/"*.md)"
+  "$fixture/repo/$harness/bootstrap"
+  [[ "$(sha256sum "$runtime/$directory/"*.md; stat -c '%i:%Y:%a' "$runtime/$directory/"*.md)" == "$first" ]]
+
+  # Rejected inputs must fail before even creating a destination.
+  rejected="$fixture/rejected-$harness"
+  if [[ "$harness" == pi ]]; then
+    export PI_CODING_AGENT_DIR="$rejected"
+  else
+    export OPENCODE_CONFIG_DIR="$rejected"
+  fi
+  cp "$fixture/repo/prompts/commit.md" "$specific/commit.md"
+  if "$fixture/repo/$harness/bootstrap" >"$fixture/error" 2>&1; then
+    echo "Accepted shared/specific name collision for $harness" >&2
+    exit 1
+  fi
+  grep -q 'collision: commit.md' "$fixture/error"
+  [[ ! -e "$rejected" ]]
+  rm "$specific/commit.md"
+
+  for field in agent model subagent subtask argument-hint; do
+    printf '%s\n' '---' 'description: Invalid shared metadata' "$field: invalid" '---' 'Prompt body.' >"$fixture/repo/prompts/invalid.md"
+    if "$fixture/repo/$harness/bootstrap" >"$fixture/error" 2>&1; then
+      echo "Accepted $field in shared prompt for $harness" >&2
+      exit 1
+    fi
+    grep -q 'single plain description' "$fixture/error"
+    [[ ! -e "$rejected" ]]
+  done
+  # shellcheck disable=SC2016 # These are deliberately invalid template bodies.
+  for body in 'Use $1' 'Use $@' 'Use ${1:-default}' 'Use !`git status`' 'Read @src/main.ts'; do
+    printf '%s\n' '---' 'description: Invalid shared syntax' '---' "$body" >"$fixture/repo/prompts/invalid.md"
+    if "$fixture/repo/$harness/bootstrap" >"$fixture/error" 2>&1; then
+      echo "Accepted nonportable syntax for $harness: $body" >&2
+      exit 1
+    fi
+    grep -q 'nonportable' "$fixture/error"
+    [[ ! -e "$rejected" ]]
+  done
+  for description in true False NULL 123; do
+    printf '%s\n' '---' "description: $description" '---' 'Prompt body.' >"$fixture/repo/prompts/invalid.md"
+    if "$fixture/repo/$harness/bootstrap" >"$fixture/error" 2>&1; then
+      echo "Accepted non-text description for $harness: $description" >&2
+      exit 1
+    fi
+    [[ ! -e "$rejected" ]]
+  done
+  rm "$fixture/repo/prompts/invalid.md"
+  # The shared tree is flat, matching Pi's default discovery.
+  mkdir "$fixture/repo/prompts/nested"
+  if "$fixture/repo/$harness/bootstrap" >"$fixture/error" 2>&1; then
+    echo "Accepted nested shared prompt directory for $harness" >&2
+    exit 1
+  fi
+  grep -q 'flat, regular' "$fixture/error"
+  [[ ! -e "$rejected" ]]
+  rmdir "$fixture/repo/prompts/nested"
+  [[ "$(sha256sum "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md"; stat -c '%i:%Y:%a' "$runtime/"{.env,runtime-state} "$runtime/$directory/local.md")" == "$preserved" ]]
+  printf '%s shared prompt checks passed: install, specific prompts, preservation, repeat runs, preflight.\n' "$harness"
+done
+
+for name in commit commitall; do
+  [[ -f "$repo/prompts/$name.md" ]]
+  [[ ! -e "$repo/pi/prompts/$name.md" && ! -e "$repo/opencode/commands/$name.md" ]]
+done
+if grep -En 'Use Pi|mcp__|subagents:' "$repo/prompts/"*.md; then
+  echo 'Harness-specific instructions found in shared prompts' >&2
+  exit 1
+fi
+printf 'Shared prompts have one canonical copy and no harness-specific instructions.\n'

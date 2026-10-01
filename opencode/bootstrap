@@ -84,6 +84,10 @@ preserve_legacy_checkout() {
   echo "Preserved old OpenCode Git metadata at $backup" >&2
 }
 
+# shellcheck source=../lib/shared-prompts.sh
+source "$source_dir/../lib/shared-prompts.sh"
+validate_shared_prompts "$source_dir/../prompts" "$source_dir/commands"
+
 mkdir -p -- "$runtime_dir"
 retire_legacy_skills
 preserve_legacy_checkout
@@ -95,3 +99,4 @@ done
 for directory in agents commands themes; do
   copy_declared_entries "$directory"
 done
+copy_shared_prompts "$source_dir/../prompts" "$runtime_dir/commands"
