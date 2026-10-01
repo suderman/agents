@@ -112,7 +112,8 @@ merge_settings() {
     if (.[0] | type) != "object" or (.[1] | type) != "object" then
       error("Pi settings must be JSON objects")
     else
-      .[0] * .[1]
+      # Retire pi-subagents settings without dropping other runtime-owned keys.
+      (.[0] | del(.subagents)) * .[1]
     end
   ' "$existing" "$source_dir/settings.json" >"$temporary"
   chmod 0644 -- "$temporary"

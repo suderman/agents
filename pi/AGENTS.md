@@ -28,42 +28,9 @@
 
 **Clean up after yourself.** Remove agent-created debug logs, experiments, temporary files, and other disposable leftovers before you're done. Do not delete supplied project or task materials merely because they were used during the work. Leave files cleaner than you found them without destroying source context.
 
-## Subagent policy
+## Task ownership
 
-Parent agent owns task tracking, decisions, source reads, edits, tests, validation, and final response. Normal substantive implementation stays in the parent on the configured Sol high model. Do not delegate implementation unless user explicitly requests it.
-
-Standing authorization applies only to scout, oracle, and reviewer use described below. Default mode is `subagents: auto` when prompt does not specify another mode. Do not turn routine work into scout, oracle, and reviewer ceremony.
-
-Current operational fallback: `subagents: auto` uses the parent directly while codex-lb stability remains under follow-up. Parent must not automatically launch scout, oracle, or reviewer. Role guidance below applies only when an explicit directive requests that role until automatic use is re-enabled.
-
-Use at most one fresh-context `scout` when finding relevant entry points, ownership, data flow, callers, tests, or existing patterns would otherwise require broad repository exploration. Scout uses Terra at low thinking. Skip it when likely target is known, task is trivial or informational, or one or two direct reads should be enough.
-
-Scout must not edit project or source files. It may write its configured report artifact. Ask for concise findings with relevant files, symbols, relationships, risks, and recommended parent reads. Parent must read source needed for any edit instead of trusting scout summary alone.
-
-Use fresh-context `oracle` before editing only when a substantial task needs planning or a strong second opinion. Good reasons include unclear architecture, meaningful design tradeoffs, multi-stage implementation, or broad changes across several components. Skip oracle for routine work, obvious bugs, trivial edits, and tasks whose implementation path is already clear.
-
-Oracle uses Astra at high thinking and stays read-only. Defer Astra oracle launches until codex-lb 1.25.0 is installed and verified; normal `subagents: auto` must not depend on Astra. Give it the user goal, relevant constraints, scout findings when available, and enough source context to reason about the task. Ask for a concise proposed plan, risks, and important decisions. Parent accepts or rejects the advice. When parent accepts a useful oracle plan, record it in the existing Org project task before implementation. Oracle must not edit the Org file or implement changes.
-
-After parent makes substantive behavioral, code, test, automation, or configuration changes, launch one fresh-context `reviewer`. Skip automatic review for trivial edits, formatting-only changes, or requests that explicitly disable review.
-
-Reviewer inherits the parent model at high thinking, which normally produces a fresh Sol high review. Give reviewer a short brief with original goal, accepted constraints, and success criteria. Reviewer must inspect current instructions, repository state, changed files, diff, and validation evidence directly. Do not fork parent conversation by default.
-
-Reviewer must not edit files. Require concise, evidence-backed findings with file and line references. Parent decides which findings are valid and applies fixes directly. Do not enter a review loop unless user requests one.
-
-Do not report completion with unresolved scout, oracle, or reviewer runs. Consume results and report their disposition in the same task.
-
-Exact `subagents:` directive in user prompt overrides default mode:
-
-- `subagents: none`: parent works directly with no child agents.
-- `subagents: scout`: force one scout, then parent completes task without automatic oracle or reviewer unless separately requested.
-- `subagents: review`: parent works directly, then force one reviewer.
-- `subagents: full`: force scout, parent implementation, then reviewer. This does not invoke oracle.
-- `subagents: plan`: unavailable until codex-lb 1.25.0; do not launch Astra today. Keep the oracle configuration for later verification.
-- `subagents: auto`: use default policy.
-
-Natural-language equivalents also apply, including "do this directly", "scout first", "review after", "run full scout and review pass", "plan this first", and "use Astra to plan". Exact `subagents:` directive wins if wording conflicts.
-
-Use fresh context for scout, oracle, and reviewer unless user explicitly asks a reviewer to inherit full conversation context. A request such as "review with conversation context" authorizes forked review for that task only.
+Complete work directly on the configured model. pi-subagents is not installed. Do not launch child agents or assume delegation tools are available.
 
 ## Project task tracking
 

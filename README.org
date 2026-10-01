@@ -81,7 +81,7 @@ Home Manager clones this repository into =~/.agents= when needed, then runs enab
 
 Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, =OPENCODE_DIR=, or =HERMES_HOME= to test against another destination.
 
-Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. Other named files are refreshed as normal writable copies. Named entries under =pi/extensions/=, =pi/prompts/=, and =pi/themes/= are copied along with shared =prompts/=, without deleting unrelated entries. Run =pi/test-bootstrap= for isolated preservation checks.
+Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. The retired =subagents= key is removed. Other named files are refreshed as normal writable copies. Named entries under =pi/extensions/=, =pi/prompts/=, and =pi/themes/= are copied along with shared =prompts/=, without deleting unrelated entries. Run =pi/test-bootstrap= for isolated preservation checks.
 
 The NixOS Pi wrapper runs =pi/fix-dcp-package= before startup. It moves pi-dcp's incorrectly published TypeBox dependency to =peerDependencies= with a =*= range. Corrected releases are left unchanged; extension code and shared npm dependencies are not touched.
 

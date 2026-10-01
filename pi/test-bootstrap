@@ -8,7 +8,7 @@ export PI_CODING_AGENT_DIR="$fixture/agent"
 export XDG_STATE_HOME="$fixture/state"
 mkdir -p "$PI_CODING_AGENT_DIR/themes"
 
-printf '{"runtimeOnly":true,"lastChangelogVersion":"test"}\n' >"$PI_CODING_AGENT_DIR/settings.json"
+printf '{"runtimeOnly":true,"lastChangelogVersion":"test","subagents":{"agentOverrides":{"scout":{"model":"retired"}}},"packages":["npm:pi-subagents"]}\n' >"$PI_CODING_AGENT_DIR/settings.json"
 printf 'private runtime secret\n' >"$PI_CODING_AGENT_DIR/.env"
 printf 'saved runtime state\n' >"$PI_CODING_AGENT_DIR/runtime-state"
 for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
@@ -30,7 +30,9 @@ done
 jq -e '
   .runtimeOnly == true and .lastChangelogVersion == "test" and
   .defaultTools == ["+codemode"] and .theme == "stylix" and
-  (.packages | index("npm:pi-mcp-adapter") == null)
+  (.packages | index("npm:pi-mcp-adapter") == null) and
+  (.packages | index("npm:pi-subagents") == null) and
+  (has("subagents") | not)
 ' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null
 jq -e '
   (.mcpServers | keys | length) == 4 and
@@ -43,6 +45,7 @@ for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
   [[ ! -e "$PI_CODING_AGENT_DIR/$file" && ! -L "$PI_CODING_AGENT_DIR/$file" ]]
 done
 grep -q 'mcp__chrome_devtools__take_snapshot' "$PI_CODING_AGENT_DIR/AGENTS.md"
+! grep -q 'subagents:' "$PI_CODING_AGENT_DIR/AGENTS.md"
 
 first="$(sha256sum "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
 stats="$(stat -c '%i:%Y:%a' "$PI_CODING_AGENT_DIR/settings.json" "$PI_CODING_AGENT_DIR/mcp.json")"
@@ -70,4 +73,4 @@ first="$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")"
 [[ "$(sha256sum "$manifest"; stat -c '%i:%Y:%a' "$manifest")" == "$first" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
 
-printf 'Pi bootstrap checks passed: native MCP, codemode, shared prompts, state/theme, package repair, repeat runs.\n'
+printf 'Pi bootstrap checks passed: native MCP, codemode, shared prompts, retired subagents, state/theme, package repair, repeat runs.\n'
