@@ -1,0 +1,32 @@
+* Sheepdog mandate: bounded project supervision
+
+** Exact launch context
+
+- Repository: =/absolute/project=; execution host: =assigned-host=.
+- Canonical record: =/absolute/project.org=, heading =* PROG Exact assigned task=.
+- Worker/supervisor: exact named Herdr sessions in the assigned workspace.
+- Requested supervisor model: supplied by the human at launch. Verify the actual session model and record its evidence before binding; do not infer it from defaults.
+
+** Outcome and acceptance
+
+Add optional local best-score storage to a terminal game. Hermes proposes the smallest slices needed to reach this outcome; the human does not prescribe the sequence.
+
+- Without the opt-in flag, behavior and filesystem writes remain unchanged.
+- An explicit score-file path records the best valid-guess count across processes.
+- Replay and invalid input keep their existing semantics.
+- Missing storage initializes safely. Invalid existing data produces a clear error without overwriting that data.
+- Automated tests use temporary directories and demonstrate persistence, unchanged default behavior, and failure preservation. Existing tests still pass.
+
+** Non-goals and allowed actions
+
+No GUI, accounts, online leaderboard, new runtime dependency, global installation, host/fleet build, deployment, or GitHub creation. Pi alone edits code. Hermes may inspect, run bounded tests when Pi is idle, steer in-scope work, and authorize publication of reviewed files to the explicitly named local =origin/main=. No force push or unrelated-file staging. Normal Pi abort is allowed only for a demonstrated scope/resource violation, with cancellation and editor inspection before redirection.
+
+** Limits and expiry
+
+Use existing Python and local tests, at most 30 minutes of supervision, a 60-second review interval, and a 300-second review deadline. No large downloads or long host builds. At expiry, stop scheduling, leave Pi running, and record whether it is idle, blocked, unknown, or continues unsupervised. Do not renew automatically. A verified pause before expiry requires the abort permission above; stopping the watch alone does not pause Pi.
+
+** Evidence, handoff, and escalation
+
+Maintain the private run's handoff fields: accepted work, independent verification, verified publication, remaining work, and stopping reason. Reference the exact canonical task. Separate worker claims from supervisor checks and watcher timestamps. Measure review overhead and worker waiting time before proposing cadence changes.
+
+Stop and report uncertain input delivery, a stalled review, identity/repository changes, approval dialogs, ambiguous cancellation/editor text, conflicting work, or a decision outside this mandate. Leave the agents and workspace available for the human.

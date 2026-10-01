@@ -37,6 +37,7 @@ jobs:
           nix flake check --all-systems
           pi/test-bootstrap
           tests/test-prompts
+          python3 -B skills/sheepdog/scripts/test_sheepdog.py
           nix shell nixpkgs#yq-go --command hermes/test-bootstrap
           nix build .#pi .#opencode .#hermes-agent --no-link
           nix run .#pi -- --version
