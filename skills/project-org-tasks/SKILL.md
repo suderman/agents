@@ -277,13 +277,13 @@ These directories are working-material dropzones. Appropriate contents include:
 
 - client-provided documents
 - emails related to the ask
-- spreadsheets and data files
+- client-provided spreadsheets and data files
 - screenshots
 - PDFs
 - supplied assets
-- exports
+- client-provided exports
 - task-specific notes
-- generated deliverables that do not belong in source control
+- human-readable deliverables
 
 Apply these rules:
 
@@ -305,11 +305,28 @@ Apply these rules:
 - Preserve existing filenames unless renaming materially improves the workflow
   or the user asks.
 - Never create or fall back to a repository-local `<repo>/work/` directory.
-  Task material belongs under the canonical project directory in `~/org/work/`.
+  Planning and supplied task materials belong under the canonical project
+  directory in `~/org/work/`. Generated runtime data does not.
 
 When the project already uses an explicit Org property or link to associate a
 task with its directory, preserve and update that convention rather than
 inventing a second one.
+
+## Generated runtime workspaces
+
+Keep agent-generated runtime data out of `~/org/work/`. Capture payloads, replay
+trees, fixtures, SQLite databases, audit scripts, logs and machine-readable
+manifests belong in a gitignored `.scratch/` directory in the relevant source
+repository. Confirm Git exclusion before writing private data and keep private
+scratch directories owner-only. A scratch directory is not a project planning
+record or a canonical archive.
+
+Keep task state, planning, handoffs and readable notes in the Org project tree.
+Link to scratch evidence when useful instead of copying it into Org. Preserve
+client-provided material separately from generated runtime files. When relocating
+existing scratch trees, verify file hashes and update note links. Historical
+manifests and scripts can retain their recorded paths; review those paths and
+create fresh protection baselines before another run.
 
 ## Working with task materials
 
