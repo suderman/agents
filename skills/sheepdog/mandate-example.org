@@ -4,12 +4,12 @@
 
 - Repository: =/absolute/project=; execution host: =assigned-host=.
 - Canonical record: =/absolute/project.org=, heading =* PROG Exact assigned task=.
-- Worker/supervisor: exact named Herdr sessions in the assigned workspace.
+- Worker/supervisor: two interactive Pi sessions with unique names, separate panes/terminals, and distinct session files in the assigned Herdr workspace.
 - Requested supervisor model: supplied by the human at launch. Verify the actual session model and record its evidence before binding; do not infer it from defaults.
 
 ** Outcome and acceptance
 
-Add optional local best-score storage to a terminal game. Hermes proposes the smallest slices needed to reach this outcome; the human does not prescribe the sequence.
+Add optional local best-score storage to a terminal game. The Pi supervisor proposes the smallest slices needed to reach this outcome; the human does not prescribe the sequence.
 
 - Without the opt-in flag, behavior and filesystem writes remain unchanged.
 - An explicit score-file path records the best valid-guess count across processes.
@@ -19,17 +19,17 @@ Add optional local best-score storage to a terminal game. Hermes proposes the sm
 
 ** Non-goals and allowed actions
 
-No GUI, accounts, online leaderboard, new runtime dependency, global installation, host/fleet build, deployment, or GitHub creation. Pi alone edits code. Hermes may inspect, run bounded tests when Pi is idle, steer in-scope work, and authorize publication of reviewed files to the explicitly named local =origin/main=. No force push or unrelated-file staging. Normal Pi abort is allowed only for a demonstrated scope/resource violation, with cancellation and editor inspection before redirection.
+No GUI, accounts, online leaderboard, new runtime dependency, global installation, host/fleet build, deployment, or GitHub creation. Only the Pi worker edits code and performs Git writes. The Pi supervisor may inspect, run bounded tests when the worker is idle, steer in-scope work, and authorize publication of reviewed files to the explicitly named local =origin/main=. No force push or unrelated-file staging. Normal Pi abort is allowed only for a demonstrated scope/resource violation, with cancellation and editor inspection before redirection.
 
 ** Limits and expiry
 
-Use existing Python and local tests, at most 30 minutes of supervision, a 60-second review interval, a 900-second soft acknowledgement threshold, and an 1800-second hard acknowledgement timeout. Use =--review-seconds 900 --review-hard-seconds 1800= for a fresh binding. Soft overdue records one local warning while the same review remains active; it sends no reminder or duplicate prompt. The hard end is capped by absolute watch expiry, even when Hermes is working. Legacy bindings keep their original hard deadline; do not migrate or revive them. No large downloads or long host builds. At expiry, stop scheduling, leave Pi running, and record whether it is idle, blocked, unknown, or continues unsupervised. Do not renew automatically. A verified pause before expiry requires the abort permission above; stopping the watch alone does not pause Pi.
+Use existing Python and local tests, at most 30 minutes of supervision, a 60-second review interval, a 900-second soft acknowledgement threshold, and an 1800-second hard acknowledgement timeout. Use =--review-seconds 900 --review-hard-seconds 1800= for a fresh binding. Soft overdue records one local warning while the same review remains active; it sends no reminder or duplicate prompt. The hard end is capped by absolute watch expiry, even when the Pi supervisor is working. Legacy bindings keep their original hard deadline; do not migrate or revive them. No large downloads or long host builds. At expiry, stop scheduling, leave Pi running, and record whether it is idle, blocked, unknown, or continues unsupervised. Do not renew automatically. A verified pause before expiry requires the abort permission above; stopping the watch alone does not pause Pi.
 
 ** Evidence, handoff, and escalation
 
 Maintain the private run's handoff fields: accepted work, independent verification, verified publication, remaining work, stopping reason, pending recovery, and notification route/result. Reference the exact canonical task. Separate worker claims from supervisor checks and watcher timestamps. Measure review overhead and worker waiting time before proposing cadence changes.
 
-An interruption does not end Hermes's responsibility. Inspect activity and replies since the relevant question in the pinned session, not just the current viewport. Separate suspected issues from confirmed problems. Withdraw false alarms and resume authorized work; correct real problems within this mandate. Confirm receipt, understanding, and appropriate resumed work before resolving recovery or sending another correction. Keep pending investigation and recovery in the handoff across ACK.
+An interruption does not end the Pi supervisor's responsibility. Inspect activity and replies since the relevant question in the pinned session, not just the current viewport. Separate suspected issues from confirmed problems. Withdraw false alarms and resume authorized work; correct real problems within this mandate. Confirm receipt, understanding, and appropriate resumed work before resolving recovery or sending another correction. Keep pending investigation and recovery in the handoff across ACK.
 
 The user's Syncthing-synced =~/org= work tree permits group access, including =0770= directories and =0660= files. Do not block, request approval, or chmod these outputs solely because an earlier record claimed =0700=/=0600=. Check content integrity separately and continue authorized work. Credential and helper ownership-registry protections remain unchanged.
 

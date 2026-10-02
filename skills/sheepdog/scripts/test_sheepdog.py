@@ -22,13 +22,13 @@ sheepdog = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(sheepdog)
 
 
-def agent(kind, status):
+def agent(role, status):
     return {
-        "agent": kind,
+        "agent": "pi",
         "workspace_id": "w-test",
-        "pane_id": kind,
-        "terminal_id": "terminal-" + kind,
-        "agent_session": {"value": "session-" + kind},
+        "pane_id": "pane-" + role,
+        "terminal_id": "terminal-" + role,
+        "agent_session": {"kind": "path", "value": "session-" + role},
         "agent_status": status,
         "state_change_seq": 1,
     }
@@ -44,8 +44,8 @@ class WatchChecks(unittest.TestCase):
         repo = self.base / "project"
         repo.mkdir()
         self.current = {
-            "worker": agent("pi", "working"),
-            "supervisor": agent("hermes", "idle"),
+            "worker": agent("worker", "working"),
+            "supervisor": agent("supervisor", "idle"),
         }
         self.state: dict[str, Any] = {
             "status": "active",
@@ -519,12 +519,16 @@ class WatchChecks(unittest.TestCase):
     def test_review_prompt_names_sheepdog_and_exact_task(self):
         self.tick(60)
         message = self.prompts()[0][-1]
+        self.assertTrue(message.startswith("* Sheepdog review 1\n"))
+        self.assertIn("You are the Pi supervisor, not the worker", message)
+        self.assertIn("do not edit project code", message)
+        self.assertEqual(self.prompts()[0][2], "supervisor")
         self.assertIn("Follow sheepdog", message)
         self.assertIn(self.state["task"], message)
         self.assertIn(self.state["task_heading"], message)
         self.assertIn("ACK does not resolve recovery", message)
 
-    def test_launch_records_observed_model_task_and_unique_worker(self):
+    def init_args(self):
         org = self.base / "org/work"
         org.mkdir(parents=True)
         org.chmod(0o770)
@@ -536,7 +540,7 @@ class WatchChecks(unittest.TestCase):
         mandate.chmod(0o660)
         socket = self.base / "socket"
         socket.touch()
-        args = argparse.Namespace(
+        return argparse.Namespace(
             run=self.base / "initialized",
             repo=Path(self.state["repo"]),
             socket=socket,
@@ -555,6 +559,96 @@ class WatchChecks(unittest.TestCase):
             worker="worker",
             supervisor="supervisor",
         )
+
+    def test_init_requires_pi_worker_and_supervisor(self):
+        args = self.init_args()
+        for role in ("worker", "supervisor"):
+            with self.subTest(role=role):
+                self.current[role]["agent"] = "hermes"
+                with (
+                    patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+                    patch.object(sheepdog, "call", side_effect=self.fake_call),
+                    self.assertRaisesRegex(RuntimeError, f"Expected Pi {role}"),
+                ):
+                    sheepdog.initialize(args)
+                self.current[role]["agent"] = "pi"
+                self.assertFalse(args.run.exists())
+        self.assertTrue(all(c[:2] == ("agent", "get") for c in self.calls))
+
+    def test_init_rejects_shared_pi_identity_or_different_workspace(self):
+        args = self.init_args()
+        supervisor = copy.deepcopy(self.current["supervisor"])
+        for field, message in (
+            ("target", "separate panes"),
+            ("pane_id", "separate panes"),
+            ("terminal_id", "separate panes"),
+            ("agent_session", "separate Pi sessions"),
+            ("workspace_id", "share the assigned workspace"),
+        ):
+            with self.subTest(field=field):
+                self.current["supervisor"] = copy.deepcopy(supervisor)
+                args.supervisor = "supervisor"
+                if field == "target":
+                    args.supervisor = "worker"
+                elif field == "workspace_id":
+                    self.current["supervisor"][field] = "other-workspace"
+                else:
+                    self.current["supervisor"][field] = self.current["worker"][field]
+                with (
+                    patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+                    patch.object(sheepdog, "call", side_effect=self.fake_call),
+                    self.assertRaisesRegex(RuntimeError, message),
+                ):
+                    sheepdog.initialize(args)
+                self.assertFalse(args.run.exists())
+        self.assertTrue(all(c[:2] == ("agent", "get") for c in self.calls))
+
+    def test_non_pi_binding_cannot_review_or_control_but_can_be_stopped(self):
+        prompt = self.prepare_action()
+        self.current["supervisor"]["agent"] = "hermes"
+        self.state["supervisor"]["identity"] = sheepdog.identity(
+            self.current["supervisor"]
+        )
+        sheepdog.save(self.directory, self.state)
+        with self.assertRaisesRegex(RuntimeError, "Expected Pi supervisor"):
+            self.tick(62)
+        for command, extra in (
+            ("ack", ("--summary", "Cannot accept")),
+            ("steer", ("--message-file", prompt)),
+            ("interrupt", ()),
+            ("recover", ("--evidence", "Cannot recover")),
+        ):
+            with (
+                self.subTest(command=command),
+                self.assertRaisesRegex(RuntimeError, "Expected Pi supervisor"),
+            ):
+                self.command(command, "--review", "1", *extra)
+        self.assertFalse(self.calls)
+        self.command("stop", "--summary", "Retire the old Hermes binding")
+        state = sheepdog.read_record(self.directory / "state.json")
+        self.assertEqual(state["status"], "stopped")
+        self.assertEqual(state["supervisor"]["identity"]["agent"], "hermes")
+        self.assertFalse(Path(state["owner_file"]).exists())
+        self.assertFalse(self.calls)
+
+    def test_replaced_pi_supervisor_sends_no_input(self):
+        for field, replacement in (
+            ("agent", "hermes"),
+            ("terminal_id", "replacement"),
+            ("agent_session", {"kind": "path", "value": "replacement"}),
+        ):
+            with self.subTest(field=field):
+                original = self.current["supervisor"][field]
+                self.current["supervisor"][field] = replacement
+                with self.assertRaisesRegex(
+                    RuntimeError, "supervisor identity changed"
+                ):
+                    self.tick(60)
+                self.current["supervisor"][field] = original
+        self.assertFalse(self.prompts())
+
+    def test_launch_records_observed_model_task_and_unique_worker(self):
+        args = self.init_args()
         with (
             patch.dict(
                 sheepdog.os.environ, {"XDG_STATE_HOME": str(self.base / "state")}
@@ -567,7 +661,13 @@ class WatchChecks(unittest.TestCase):
                 sheepdog.initialize(args)
             bound = sheepdog.read_record(args.run / "state.json")
             self.assertEqual(bound["supervisor_model"], "observed-model")
-            self.assertEqual(bound["task"], str(task))
+            self.assertEqual(bound["task"], str(args.task))
+            self.assertEqual(bound["worker"]["identity"]["agent"], "pi")
+            self.assertEqual(bound["supervisor"]["identity"]["agent"], "pi")
+            self.assertNotEqual(
+                bound["worker"]["identity"]["agent_session"],
+                bound["supervisor"]["identity"]["agent_session"],
+            )
             self.assertEqual(
                 (bound["review_seconds"], bound["review_hard_seconds"]), (300, 1800)
             )
@@ -595,6 +695,40 @@ class WatchChecks(unittest.TestCase):
                 sheepdog.initialize(args)
             self.assertFalse(args.run.exists())
         self.assertFalse(self.prompts())
+
+    def test_pi_pair_review_correction_recovery_and_stop(self):
+        args = self.init_args()
+        with (
+            patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+            patch.object(sheepdog, "call", side_effect=self.fake_call),
+            patch.object(sheepdog.time, "time", return_value=100),
+        ):
+            sheepdog.initialize(args)
+        self.directory = args.run
+        self.state = sheepdog.read_record(self.directory / "state.json")
+        self.tick(160)
+        prompt = self.directory / "correction.org"
+        prompt.write_text("* Correct the assigned task\n")
+        self.command("steer", "--review", "1", "--message-file", str(prompt), now=161)
+        self.command("ack", "--review", "1", "--summary", "Verify receipt", now=162)
+        self.state = sheepdog.read_record(self.directory / "state.json")
+        self.current["worker"]["agent_status"] = "done"
+        self.current["worker"]["state_change_seq"] += 1
+        self.tick(163)
+        self.command(
+            "recover", "--review", "2", "--evidence", "Checked worker reply", now=164
+        )
+        self.command("ack", "--review", "2", "--summary", "Verified", now=165)
+        self.command("stop", "--outcome", "completed", now=166)
+        state = sheepdog.read_record(self.directory / "state.json")
+        self.assertEqual(
+            [c[2] for c in self.prompts()], ["supervisor", "worker", "supervisor"]
+        )
+        self.assertEqual(state["status"], "stopped")
+        self.assertEqual(state["outcome"], "completed")
+        self.assertIsNone(state["recovery"])
+        self.assertFalse(Path(state["owner_file"]).exists())
+        self.assertTrue(all(a["agent"] == "pi" for a in self.current.values()))
 
     def test_ack_and_stop_keep_durable_progress_without_launcher(self):
         self.prepare_action()
