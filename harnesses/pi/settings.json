@@ -15,6 +15,7 @@
   "theme": "stylix",
   "tuiMode": "fullscreen",
   "hideThinkingBlock": true,
+  "skills": ["~/.agents/skills", "~/.agents/vendor/skills"],
   "packages": [
     "npm:@juicesharp/rpiv-btw",
     "npm:pi-web-access",

@@ -1,0 +1,350 @@
+#!/usr/bin/env python3
+"""Exercise the skill resolver with local Git repositories, never the network."""
+
+import json
+import os
+import shutil
+import subprocess
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parent.parent
+
+
+class SkillsTests(unittest.TestCase):
+    def setUp(self):
+        scratch = REPO / ".scratch"
+        scratch.mkdir(mode=0o700, exist_ok=True)
+        self.temporary = tempfile.TemporaryDirectory(prefix="test-skills-", dir=scratch)
+        self.addCleanup(self.temporary.cleanup)
+        self.work = Path(self.temporary.name)
+        self.root = self.work / "agents"
+        (self.root / "lib").mkdir(parents=True)
+        (self.root / "skills").mkdir()
+        shutil.copy2(REPO / "lib/skills", self.root / "lib/skills")
+        self.write_json("skills.json", {"skills": []})
+        self.write_json("skills.lock", {"skills": []})
+        self.upstream = self.work / "upstream"
+        self.upstream.mkdir()
+        self.git("init", "-q", "-b", "main")
+        self.git("config", "user.name", "Fixture")
+        self.git("config", "user.email", "fixture@example.invalid")
+        self.add_skill(self.upstream / "collection/alpha", "alpha")
+        self.add_skill(self.upstream / "collection/beta", "beta")
+        (self.upstream / "unrelated.txt").write_text("not a skill\n")
+        (self.upstream / "collection/alpha/run").write_text("#!/bin/sh\necho fixture\n")
+        (self.upstream / "collection/alpha/run").chmod(0o755)
+        self.first = self.commit()
+        self.entry = {
+            "name": "alpha",
+            "git": str(self.upstream),
+            "path": "collection/alpha",
+        }
+        self.select(self.entry)
+
+    def git(self, *args):
+        return subprocess.check_output(
+            ["git", "-C", str(self.upstream), *args], text=True
+        ).strip()
+
+    def commit(self):
+        self.git("add", ".")
+        self.git("commit", "-qm", "Fixture revision")
+        return self.git("rev-parse", "HEAD")
+
+    def add_skill(self, directory, name):
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "SKILL.md").write_text(
+            f"---\nname: {name}\ndescription: Fixture skill\n---\n\nOriginal.\n"
+        )
+
+    def write_json(self, name, value):
+        (self.root / name).write_text(json.dumps(value, indent=2) + "\n")
+
+    def select(self, *entries):
+        self.write_json("skills.json", {"skills": list(entries)})
+
+    def run_command(self, command, error=None):
+        result = subprocess.run(
+            [str(self.root / "lib/skills"), command],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if error:
+            self.assertNotEqual(result.returncode, 0, result.stdout)
+            self.assertIn(error, result.stderr)
+        else:
+            self.assertEqual(result.returncode, 0, result.stderr)
+        return result
+
+    def lock(self):
+        return json.loads((self.root / "skills.lock").read_text())["skills"]
+
+    def snapshot(self):
+        return {
+            str(path.relative_to(self.root / "vendor/skills")): (
+                path.read_bytes(),
+                path.stat().st_mode & 0o777,
+            )
+            for path in (self.root / "vendor/skills").rglob("*")
+            if path.is_file()
+        }
+
+    def test_empty_manifest(self):
+        self.select()
+        before = (self.root / "skills.lock").read_bytes()
+        self.run_command("materialize")
+        self.assertEqual(self.snapshot(), {})
+        self.run_command("update")
+        self.run_command("check")
+        self.assertEqual((self.root / "skills.lock").read_bytes(), before)
+
+    def test_locked_reproduction_and_repeat_runs(self):
+        self.run_command("update")
+        before = self.snapshot()
+        lock = (self.root / "skills.lock").read_bytes()
+        self.assertEqual(self.lock()[0]["revision"], self.first)
+        self.assertEqual(self.lock()[0]["ref"], "HEAD")
+        (self.upstream / "collection/alpha/SKILL.md").write_text("changed upstream\n")
+        self.commit()
+        shutil.rmtree(self.root / "vendor")
+        self.run_command("materialize")
+        self.assertEqual(self.snapshot(), before)
+        (self.root / "vendor/skills/alpha/run").write_text("local edit\n")
+        (self.root / "vendor/skills/unselected").mkdir()
+        self.run_command("materialize")
+        self.run_command("materialize")
+        self.run_command("check")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual((self.root / "skills.lock").read_bytes(), lock)
+        self.assertEqual(list((self.root / ".scratch").iterdir()), [])
+
+    def test_update_advances_and_recreates_lock(self):
+        self.run_command("update")
+        with (self.upstream / "collection/alpha/SKILL.md").open("a") as output:
+            output.write("New revision.\n")
+        second = self.commit()
+        self.run_command("update")
+        self.assertNotEqual(second, self.first)
+        self.assertEqual(self.lock()[0]["revision"], second)
+        self.assertIn(
+            "New revision", (self.root / "vendor/skills/alpha/SKILL.md").read_text()
+        )
+        lock = (self.root / "skills.lock").read_bytes()
+        (self.root / "skills.lock").unlink()
+        self.run_command("materialize", "skills.lock")
+        self.run_command("update")
+        self.assertEqual((self.root / "skills.lock").read_bytes(), lock)
+
+    def test_select_multiple_and_remove_one(self):
+        beta = {**self.entry, "name": "beta", "path": "collection/beta"}
+        self.select(self.entry, beta)
+        self.run_command("update")
+        self.assertEqual(
+            {path.name for path in (self.root / "vendor/skills").iterdir()},
+            {"alpha", "beta"},
+        )
+        self.assertFalse(list((self.root / "vendor").rglob(".git")))
+        self.assertFalse(list((self.root / "vendor").rglob("unrelated.txt")))
+        self.select(beta)
+        self.run_command("update")
+        self.assertFalse((self.root / "vendor/skills/alpha").exists())
+
+    def test_rebuild_discards_invalid_vendor_edits(self):
+        self.run_command("update")
+        before = self.snapshot()
+        (self.root / "vendor/skills/alpha/SKILL.md").write_text("broken local edit\n")
+        self.run_command("materialize")
+        self.assertEqual(self.snapshot(), before)
+
+    def test_deselection_allows_maintained_replacement(self):
+        self.run_command("update")
+        self.add_skill(self.root / "skills/alpha", "alpha")
+        self.select()
+        self.run_command("update")
+        self.run_command("check")
+        self.assertEqual(self.snapshot(), {})
+        self.assertTrue((self.root / "skills/alpha/SKILL.md").exists())
+
+    def test_root_skill_and_explicit_ref(self):
+        self.add_skill(self.upstream, "root-skill")
+        shutil.rmtree(self.upstream / "collection")
+        revision = self.commit()
+        self.select({"name": "root-skill", "git": str(self.upstream), "ref": revision})
+        self.run_command("update")
+        self.assertEqual(self.lock()[0]["path"], ".")
+        self.assertEqual(self.lock()[0]["revision"], revision)
+        self.run_command("check")
+
+    def test_duplicate_names_fail(self):
+        self.select(self.entry, {**self.entry, "path": "collection/beta"})
+        self.run_command("update", "duplicate skill name: alpha")
+        self.assertFalse((self.root / "vendor").exists())
+
+    def test_maintained_collision_fails_without_writes(self):
+        self.run_command("update")
+        before = self.snapshot()
+        self.add_skill(self.root / "skills/alpha", "alpha")
+        maintained = (self.root / "skills/alpha/SKILL.md").read_bytes()
+        for command in ["update", "materialize", "check"]:
+            self.run_command(command, "maintained/vendor skill name collision: alpha")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual((self.root / "skills/alpha/SKILL.md").read_bytes(), maintained)
+
+    def test_declared_name_collision(self):
+        for directory in ["different-directory", "category/nested"]:
+            with self.subTest(directory=directory):
+                self.add_skill(self.root / "skills" / directory, "alpha")
+                self.run_command("update", "skill name collision: alpha")
+                shutil.rmtree(self.root / "skills" / directory)
+
+    def test_missing_path_preserves_tree_and_lock(self):
+        self.run_command("update")
+        before = self.snapshot()
+        lock = (self.root / "skills.lock").read_bytes()
+        self.select(
+            self.entry, {**self.entry, "name": "missing", "path": "collection/missing"}
+        )
+        self.run_command("update", "missing")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual((self.root / "skills.lock").read_bytes(), lock)
+
+    def test_fetch_failure_preserves_tree_and_lock(self):
+        self.run_command("update")
+        before = self.snapshot()
+        lock = (self.root / "skills.lock").read_bytes()
+        self.select({**self.entry, "git": str(self.work / "nonexistent")})
+        self.run_command("update", "Git fetch")
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual((self.root / "skills.lock").read_bytes(), lock)
+
+    def test_malformed_declarations(self):
+        invalid = [
+            [],
+            {"skills": {}},
+            {"skills": ["alpha"]},
+            {"skills": [{"name": "alpha"}]},
+            {"skills": [{**self.entry, "unused": "x"}]},
+            {"skills": [{**self.entry, "path": "../escape"}]},
+            {"skills": [{**self.entry, "path": "/escape"}]},
+            {"skills": [{**self.entry, "ref": False}]},
+            {"skills": [{**self.entry, "name": "bad--name"}]},
+            {"skills": [{**self.entry, "git": "-bad"}]},
+        ]
+        for declaration in invalid:
+            with self.subTest(declaration=declaration):
+                self.write_json("skills.json", declaration)
+                self.run_command("update", "skills:")
+        (self.root / "skills.json").write_text('{"skills": [], "skills": []}')
+        self.run_command("update", "duplicate JSON key")
+
+    def test_lock_mismatch_and_invalid_revision(self):
+        self.run_command("materialize", "does not match")
+        self.run_command("update")
+        self.select({**self.entry, "ref": "main"})
+        self.run_command("materialize", "does not match")
+        self.select(self.entry)
+        self.write_json("skills.lock", {"skills": [{**self.entry, "revision": "HEAD"}]})
+        self.run_command("materialize", "exact 40-character")
+
+    def test_incompatible_layouts(self):
+        directory = self.upstream / "collection/alpha"
+        (directory / "SKILL.md").unlink()
+        self.commit()
+        self.run_command("update", "missing requested skill path or SKILL.md")
+        self.add_skill(directory, "different-name")
+        self.commit()
+        self.run_command("update", "name must match")
+        self.add_skill(directory, "alpha")
+        self.add_skill(directory / "nested", "nested")
+        self.commit()
+        self.run_command("update", "nested skill directories")
+        shutil.rmtree(directory / "nested")
+        (directory / "link").symlink_to("/etc/passwd")
+        self.commit()
+        self.run_command("update", "symlinks and special files")
+
+    def test_submodule_layout_fails(self):
+        self.git(
+            "update-index",
+            "--add",
+            "--cacheinfo",
+            f"160000,{self.first},collection/alpha/submodule",
+        )
+        self.git("commit", "-qm", "Submodule fixture")
+        self.run_command("update", "submodules are not supported")
+
+    def test_bootstraps_share_skills_without_copying_them(self):
+        self.run_command("update")
+        shutil.copytree(REPO / "harnesses", self.root / "harnesses")
+        shutil.copytree(REPO / "prompts", self.root / "prompts")
+        shutil.copy2(
+            REPO / "lib/shared-prompts.sh", self.root / "lib/shared-prompts.sh"
+        )
+        homes = []
+        for harness, variable in [
+            ("pi", "PI_CODING_AGENT_DIR"),
+            ("opencode", "OPENCODE_CONFIG_DIR"),
+            ("hermes", "HERMES_HOME"),
+        ]:
+            runtime = self.work / f"runtime-{harness}"
+            runtime.mkdir()
+            secret = runtime / ".env"
+            secret.write_text("private\n")
+            secret.chmod(0o600)
+            before = (secret.read_bytes(), secret.stat().st_ino, secret.stat().st_mode)
+            env = {
+                **os.environ,
+                variable: str(runtime),
+                "XDG_STATE_HOME": str(self.work / "state"),
+            }
+            bootstrap = self.root / "harnesses" / harness / "bootstrap"
+            for _ in range(2):
+                subprocess.run([str(bootstrap)], env=env, check=True)
+            self.assertEqual(
+                (secret.read_bytes(), secret.stat().st_ino, secret.stat().st_mode),
+                before,
+            )
+            self.assertFalse((runtime / "skills").exists())
+            self.assertFalse(runtime.is_symlink())
+            homes.append((bootstrap, env, runtime))
+        shared = ["~/.agents/skills", "~/.agents/vendor/skills"]
+        self.assertEqual(
+            json.loads((homes[0][2] / "settings.json").read_text())["skills"], shared
+        )
+        self.assertEqual(
+            json.loads((homes[1][2] / "opencode.json").read_text())["skills"]["paths"],
+            shared,
+        )
+        hermes_dirs = subprocess.check_output(
+            [
+                "yq",
+                "-o=json",
+                ".skills.external_dirs",
+                str(homes[2][2] / "config.yaml"),
+            ],
+            text=True,
+        )
+        self.assertEqual(json.loads(hermes_dirs), shared)
+        self.add_skill(self.root / "skills/alpha", "alpha")
+        for bootstrap, env, runtime in homes:
+            before = {
+                path: (path.read_bytes(), path.stat().st_ino)
+                for path in runtime.rglob("*")
+                if path.is_file()
+            }
+            result = subprocess.run(
+                [str(bootstrap)], env=env, capture_output=True, text=True, check=False
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("skill name collision", result.stderr)
+            self.assertEqual(
+                {path: (path.read_bytes(), path.stat().st_ino) for path in before},
+                before,
+            )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

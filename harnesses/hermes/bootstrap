@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$source_dir/../.." && pwd -P)"
 runtime_dir="${HERMES_HOME:-$HOME/.hermes}"
 
 case "$runtime_dir" in
@@ -15,6 +16,8 @@ command -v yq >/dev/null || {
   echo "Hermes bootstrap requires Mike Farah's yq v4 (Nix package yq-go)" >&2
   exit 1
 }
+
+"$repo_root/lib/skills" check
 
 mkdir -p -- "$runtime_dir"
 target="$runtime_dir/config.yaml"

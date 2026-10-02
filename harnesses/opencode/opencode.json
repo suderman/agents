@@ -3,6 +3,9 @@
   "autoshare": false,
   "autoupdate": true,
   "lsp": true,
+  "skills": {
+    "paths": ["~/.agents/skills", "~/.agents/vendor/skills"]
+  },
   "model": "minimax-coding-plan/MiniMax-M3",
   "small_model": "minimax-coding-plan/MiniMax-M2.7",
   "default_agent": "luna",

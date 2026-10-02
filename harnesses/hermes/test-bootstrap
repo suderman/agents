@@ -84,8 +84,9 @@ yq --exit-status '
   .browser.command_timeout == 75 and
   .browser.camofox.managed_persistence == true and
   .browser.camofox.rewrite_loopback_urls == false and
-  (.skills.external_dirs | length) == 1 and
+  (.skills.external_dirs | length) == 2 and
   .skills.external_dirs[0] == "~/.agents/skills" and
+  .skills.external_dirs[1] == "~/.agents/vendor/skills" and
   .skills.create_dir == "~/local-skills" and
   .mcp_servers.local.command == "local-mcp" and
   (.mcp_servers.local.args | length) == 2 and

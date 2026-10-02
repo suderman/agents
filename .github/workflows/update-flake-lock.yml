@@ -37,14 +37,17 @@ jobs:
       - name: Check and build packages
         run: |
           nix flake check --all-systems
-          pi/test-bootstrap
+          lib/skills materialize
+          harnesses/pi/test-bootstrap
+          harnesses/opencode/test-bootstrap
+          nix shell nixpkgs#yq-go --command python3 -B tests/test_skills.py
           tests/test-prompts
           tests/test-update-flake-lock
           python3 -B skills/sheepdog/scripts/test_sheepdog.py
-          nix shell nixpkgs#yq-go --command hermes/test-bootstrap
+          nix shell nixpkgs#yq-go --command harnesses/hermes/test-bootstrap
           nix build .#pi .#opencode .#hermes-agent --no-link
           nix run .#pi -- --version
-          pi/test-codemode "$(nix eval --raw .#pi.outPath)"
+          harnesses/pi/test-codemode "$(nix eval --raw .#pi.outPath)"
           nix run .#opencode -- --version
           nix run .#hermes-agent -- --version
 

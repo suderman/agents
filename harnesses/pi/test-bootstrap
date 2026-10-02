@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$source_dir/../.." && pwd -P)"
 fixture="$(mktemp -d)"
 trap 'rm -rf -- "$fixture"' EXIT
 export PI_CODING_AGENT_DIR="$fixture/agent"
@@ -24,7 +25,7 @@ before="$(runtime_hashes)"
 "$source_dir/bootstrap"
 cmp "$source_dir/mcp.json" "$PI_CODING_AGENT_DIR/mcp.json"
 for name in commit commitall; do
-  cmp "$source_dir/../prompts/$name.md" "$PI_CODING_AGENT_DIR/prompts/$name.md"
+  cmp "$repo_root/prompts/$name.md" "$PI_CODING_AGENT_DIR/prompts/$name.md"
   [[ ! -L "$PI_CODING_AGENT_DIR/prompts/$name.md" && -w "$PI_CODING_AGENT_DIR/prompts/$name.md" ]]
 done
 jq -e '

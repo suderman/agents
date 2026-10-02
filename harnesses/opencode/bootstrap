@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$source_dir/../.." && pwd -P)"
 runtime_dir="${OPENCODE_CONFIG_DIR:-${OPENCODE_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}}"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/opencode"
 
@@ -84,9 +85,11 @@ preserve_legacy_checkout() {
   echo "Preserved old OpenCode Git metadata at $backup" >&2
 }
 
-# shellcheck source=../lib/shared-prompts.sh
-source "$source_dir/../lib/shared-prompts.sh"
-validate_shared_prompts "$source_dir/../prompts" "$source_dir/commands"
+"$repo_root/lib/skills" check
+
+# shellcheck source=../../lib/shared-prompts.sh
+source "$repo_root/lib/shared-prompts.sh"
+validate_shared_prompts "$repo_root/prompts" "$source_dir/commands"
 
 mkdir -p -- "$runtime_dir"
 retire_legacy_skills
@@ -99,4 +102,4 @@ done
 for directory in agents commands themes; do
   copy_declared_entries "$directory"
 done
-copy_shared_prompts "$source_dir/../prompts" "$runtime_dir/commands"
+copy_shared_prompts "$repo_root/prompts" "$runtime_dir/commands"

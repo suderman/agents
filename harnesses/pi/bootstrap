@@ -2,6 +2,7 @@
 set -euo pipefail
 
 source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$source_dir/../.." && pwd -P)"
 runtime_dir="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}"
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/pi"
 
@@ -157,9 +158,11 @@ command -v jq >/dev/null || {
   exit 1
 }
 
-# shellcheck source=../lib/shared-prompts.sh
-source "$source_dir/../lib/shared-prompts.sh"
-validate_shared_prompts "$source_dir/../prompts" "$source_dir/prompts"
+"$repo_root/lib/skills" check
+
+# shellcheck source=../../lib/shared-prompts.sh
+source "$repo_root/lib/shared-prompts.sh"
+validate_shared_prompts "$repo_root/prompts" "$source_dir/prompts"
 
 mkdir -p -- "$runtime_dir"
 retire_legacy_skills
@@ -176,4 +179,4 @@ rm -f -- "$runtime_dir/"{mcp-adapter.json,mcp-cache.json,mcp-npx-cache.json}
 for directory in extensions prompts themes; do
   copy_declared_entries "$directory"
 done
-copy_shared_prompts "$source_dir/../prompts" "$runtime_dir/prompts"
+copy_shared_prompts "$repo_root/prompts" "$runtime_dir/prompts"

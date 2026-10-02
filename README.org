@@ -8,23 +8,69 @@ Harness-owned directories are mutable realizations of that configuration. Bootst
 
 #+begin_src text
 ~/.agents/
-├── flake.nix     Pi, OpenCode, and Hermes packages
-├── skills/       shared capabilities and knowledge, consumed in place
-├── prompts/      shared user-invoked Markdown templates
-│   ├── commit.md
-│   └── commitall.md
-├── pi/           curated Pi configuration and bootstrap
-├── opencode/     curated OpenCode configuration and bootstrap
-└── hermes/       curated Hermes configuration and bootstrap
+├── flake.nix           Pi, OpenCode, and Hermes packages
+├── flake.lock
+├── skills/             shared skills maintained here, consumed in place
+├── skills.json         selected third-party Git skills
+├── skills.lock         exact resolved revisions
+├── vendor/
+│   └── skills/         generated third-party skills, ignored by Git
+├── prompts/            shared user-invoked Markdown templates
+├── lib/                shared bootstrap plumbing and skill resolver
+├── harnesses/
+│   ├── pi/             curated Pi configuration and bootstrap
+│   ├── opencode/       curated OpenCode configuration and bootstrap
+│   └── hermes/         curated Hermes configuration and bootstrap
+└── tests/
 #+end_src
 
 Home Manager owns installation, activation, persistence, secrets, services, and machine integration in =/etc/nixos=. Pi owns =~/.pi/agent=. OpenCode owns =~/.config/opencode=. Hermes owns =~/.hermes=. These application directories stay writable and do not point back into this repository.
 
 Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessions=. The Pi wrapper sets =PI_CODING_AGENT_SESSION_DIR= so replacing or remounting =~/.pi/agent= cannot invalidate an active session path.
 
-Inbox drop-zone prompts live in =pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
+Inbox drop-zone prompts live in =harnesses/pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
 
-Shared skills live in =~/.agents/skills=. Pi and OpenCode discover that directory directly, so their application homes do not need copied skill trees. Hermes uses native =skills.external_dirs= and keeps its own =skills/= for bundled, installed, and generated skills. The skill list gives local entries precedence, but loading a bare name refuses local/external collisions. Keep names unique or load a categorized path explicitly. External skills are not write-protected; Hermes instructions require approval before changing curated skills. Skills that name Pi-only tools need adaptation before Hermes can use those tools.
+Shared skills live in =~/.agents/skills/= and =~/.agents/vendor/skills/=. Pi uses its native =skills= paths, OpenCode uses =skills.paths=, and Hermes uses =skills.external_dirs=. No shared skill tree is copied into a harness home. Maintained skills are listed first; the resolver and bootstraps refuse maintained/vendor name collisions instead of silently shadowing a maintained skill. Hermes keeps its own =skills/= for bundled, installed, and generated skills. Its list prefers local entries, but bare-name loading refuses collisions across local and configured directories. Keep those names unique too. Shared skills are not write-protected; changing maintained skills requires approval. Skills that name Pi-only tools need adaptation before Hermes can use those tools.
+
+** Selected third-party skills
+
+Edit =skills.json= to select Git-hosted skills. The initial manifest is empty. Each entry selects one directory; repeat =git= to select several skills from one repository. This example is illustrative, not an installed dependency:
+
+#+begin_src json
+{
+  "skills": [
+    {
+      "name": "pdf",
+      "git": "https://github.com/anthropics/skills.git",
+      "path": "skills/pdf",
+      "ref": "main"
+    }
+  ]
+}
+#+end_src
+
+=name= and =git= are required. =git= accepts a Git URL, SSH source, or absolute local repository path. =path= defaults to =.= for a repository-root skill. =ref= defaults to =HEAD= for the upstream default branch; a branch, tag, or commit can be selected explicitly. Paths must stay inside the upstream repository. Names must be lowercase letters/digits separated by single hyphens, at most 64 characters, and match =SKILL.md= frontmatter. Unknown fields and duplicate JSON keys or skill names fail.
+
+=skills.lock= contains the normalized declarations plus a full =revision= commit hash for each skill. Commit the manifest and lock, never downloaded contents. Python 3 and Git are the only resolver dependencies.
+
+#+begin_src sh
+# Fresh checkout or rebuild from the existing lock, without advancing revisions:
+~/.agents/lib/skills materialize
+
+# After editing the manifest, or to advance selected upstream refs:
+~/.agents/lib/skills update
+
+# Check declarations, lock agreement, layout, and maintained/vendor collisions:
+~/.agents/lib/skills check
+#+end_src
+
+Materialization replaces only =vendor/skills/= and copies only selected directories. Updates fetch the requested refs, materialize them, and rewrite the lock after all fetches and layout checks succeed. Normal materialization fetches exact locked commits and leaves the lock unchanged. Missing locks or changed declarations require an explicit update. Git sources must retain the locked commits for later reproduction.
+
+Each selected directory must contain =SKILL.md= with name and description frontmatter. Nested skills, symlinks, special files, and submodules inside selected directories are rejected rather than copied incompletely. Select nested skills separately. No dependency installation or upstream build scripts run. Review third-party instructions before using them. Generated files are not manually maintained; rerun materialization to discard edits or remove deselected skills. Temporary fetches live under ignored =.scratch/= and are removed after each run.
+
+Bootstraps check the shared skill declarations and tree without fetching or updating. Run materialization before bootstrap when the manifest is nonempty. Pi packages in =harnesses/pi/settings.json= remain Pi packages.
+
+Run =python3 -B tests/test_skills.py= for local Git fixture tests. The bootstrap fixtures also need =jq= and Mike Farah's =yq= v4.
 
 ** Shared prompts
 
@@ -36,13 +82,13 @@ The shared contract is intentionally small:
 - Start with exactly three frontmatter lines: =---=, =description: Review changes=, =---=. Use a single plain description, starting with a letter and containing only letters, digits, spaces, commas, periods, slashes, parentheses, underscores, or hyphens, with no trailing spaces. Do not use YAML boolean/null values as descriptions. No other metadata is shared.
 - Use =$ARGUMENTS= for optional input. Pi removes argument quoting and joins words with spaces; OpenCode retains the raw input. Do not depend on exact quoting or whitespace. Invoke templates without placeholders with no arguments, since OpenCode appends unused arguments while Pi ignores them.
 - Do not use positional placeholders, Pi defaults/slices, =$@=, OpenCode shell injection, or =@file= references. OpenCode's last numbered placeholder consumes remaining arguments, unlike Pi's single-argument substitution.
-- Keep instructions tool-neutral. Agent/model selection, delegation, and harness-only metadata or behavior belong in =pi/prompts/= or =opencode/commands/=, not in shared files.
+- Keep instructions tool-neutral. Agent/model selection, delegation, and harness-only metadata or behavior belong in =harnesses/pi/prompts/= or =harnesses/opencode/commands/=, not in shared files.
 
 Both bootstraps validate shared filenames, frontmatter, and substitution syntax before writing runtime files. They reject a shared filename also present in the corresponding harness-specific source directory. Rename one rather than relying on copy order. Shared files replace runtime files with the same name, including the former commit commands; unrelated runtime files survive. Project, package, extension, and JSON-defined command precedence remains harness-owned, so avoid reusing these names there.
 
 Pi copies shared files into =$PI_CODING_AGENT_DIR/prompts/=, normally =~/.pi/agent/prompts/=. OpenCode copies them into =$OPENCODE_CONFIG_DIR/commands/=, normally =~/.config/opencode/commands/=. Its bootstrap also accepts =OPENCODE_DIR= or the XDG config home; use =OPENCODE_CONFIG_DIR= when launching OpenCode against a custom destination. Both use their existing atomic writable-copy logic and skip unchanged files. Run =/reload= in Pi or start a new OpenCode session after changes.
 
-Shared commands use the current agent; Luna is OpenCode's configured default. =pi/prompts/= and =opencode/commands/= currently have no templates, but remain supported for harness-specific ones. =pi/task-drop-prompts/= stays separate because its Org prompts drive the Pi/Herdr inbox service, not user slash commands.
+Shared commands use the current agent; Luna is OpenCode's configured default. =harnesses/pi/prompts/= and =harnesses/opencode/commands/= currently have no templates, but remain supported for harness-specific ones. =harnesses/pi/task-drop-prompts/= stays separate because its Org prompts drive the Pi/Herdr inbox service, not user slash commands.
 
 Run =tests/test-prompts= to check both bootstraps, shared syntax, collisions, runtime preservation, and repeat runs without touching live homes.
 
@@ -74,24 +120,24 @@ GitHub Actions updates =flake.lock= daily at 02:00 MST (09:00 UTC, 03:00 MDT). T
 Home Manager clones this repository into =~/.agents= when needed, then runs enabled harness bootstrap scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
 
 #+begin_src sh
-~/.agents/pi/bootstrap
-~/.agents/opencode/bootstrap
-~/.agents/hermes/bootstrap
+~/.agents/harnesses/pi/bootstrap
+~/.agents/harnesses/opencode/bootstrap
+~/.agents/harnesses/hermes/bootstrap
 #+end_src
 
 Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, =OPENCODE_DIR=, or =HERMES_HOME= to test against another destination.
 
-Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. The retired =subagents= key is removed. Other named files are refreshed as normal writable copies. Named entries under =pi/extensions/=, =pi/prompts/=, and =pi/themes/= are copied along with shared =prompts/=, without deleting unrelated entries. Run =pi/test-bootstrap= for isolated preservation checks.
+Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. The retired =subagents= key is removed. Other named files are refreshed as normal writable copies. Named entries under =harnesses/pi/extensions/=, =harnesses/pi/prompts/=, and =harnesses/pi/themes/= are copied along with shared =prompts/=, without deleting unrelated entries. Run =harnesses/pi/test-bootstrap= for isolated preservation checks.
 
-The NixOS Pi wrapper runs =pi/fix-dcp-package= before startup. It moves pi-dcp's incorrectly published TypeBox dependency to =peerDependencies= with a =*= range. Corrected releases are left unchanged; extension code and shared npm dependencies are not touched.
+The NixOS Pi wrapper runs =harnesses/pi/fix-dcp-package= before startup. It moves pi-dcp's incorrectly published TypeBox dependency to =peerDependencies= with a =*= range. Corrected releases are left unchanged; extension code and shared npm dependencies are not touched.
 
 Pi uses native =mcp.json= for Chrome DevTools, Context7, gh_grep, and MiniMax. Chrome tools are exposed directly; the other servers use native codemode discovery. =defaultTools: ["+codemode"]= keeps ordinary tools available and adds sandboxed scripts for parallel calls and filtering. The old MCP adapter is no longer loaded. Bootstrap removes its retired =mcp-adapter.json=, =mcp-cache.json=, and =mcp-npx-cache.json= files; migration backups remain untouched.
 
 Home Manager generates =themes/stylix.json= after Pi's bootstrap from its Stylix palette and the curated theme's existing color roles. Pi selects that fixed theme instead of the terminal-derived system theme. The generated file is a writable runtime copy, not a repository file or store symlink, and bootstrap preserves it.
 
-OpenCode's bootstrap refreshes its named config files and named entries under =opencode/agents/=, =opencode/commands/=, and =opencode/themes/=, plus shared =prompts/= as runtime commands. It leaves all other runtime files alone. During migration from the old configuration checkout, it moves =.git= to =~/.local/state/opencode/legacy-config.git= before writing the runtime copy.
+OpenCode's bootstrap refreshes its named config files and named entries under =harnesses/opencode/agents/=, =harnesses/opencode/commands/=, and =harnesses/opencode/themes/=, plus shared =prompts/= as runtime commands. It leaves all other runtime files alone. During migration from the old configuration checkout, it moves =.git= to =~/.local/state/opencode/legacy-config.git= before writing the runtime copy. Run =harnesses/opencode/test-bootstrap= for isolated preservation checks.
 
-Hermes deep-merges =config.yaml= into the runtime YAML using Mike Farah's =yq= v4, provided by Nix's =yq-go= package. Repo-declared values win, including whole lists; unrelated keys survive at every nesting level. Runtime-only setup, config, and dashboard settings therefore persist. Bootstrap still refreshes =SOUL.md= as a repo-owned writable copy. Both writes are atomic and skip unchanged writable regular files. Empty runtime configs initialize as mappings. Malformed, scalar, list, or multi-document YAML fails without overwriting it. Credentials, auth, sessions, jobs, memories, databases, profiles, and local skills stay untouched. Run =hermes/test-bootstrap= for isolated preservation and repeat-run checks.
+Hermes deep-merges =config.yaml= into the runtime YAML using Mike Farah's =yq= v4, provided by Nix's =yq-go= package. Repo-declared values win, including whole lists; unrelated keys survive at every nesting level. Runtime-only setup, config, and dashboard settings therefore persist. Bootstrap still refreshes =SOUL.md= as a repo-owned writable copy. Both writes are atomic and skip unchanged writable regular files. Empty runtime configs initialize as mappings. Malformed, scalar, list, or multi-document YAML fails without overwriting it. Credentials, auth, sessions, jobs, memories, databases, profiles, and local skills stay untouched. Run =harnesses/hermes/test-bootstrap= for isolated preservation and repeat-run checks.
 
 Hermes defaults to =gpt-6-luna= with high reasoning through the named =custom:codex-lb= provider. Its =providers.codex-lb= entry selects =codex_responses= and reads =CODEX_LB_API_KEY= from the environment. Hermes's Responses transport sends =strict: false= for function tools so optional arguments stay optional. Bare =provider: custom= ignores a Responses override on non-OpenAI URLs, so changing only =model.api_mode= is insufficient. Legacy =model.base_url=, =model.api_key=, and =model.api_mode= fields may remain in the mutable config; the named provider entry controls this route. Auxiliary calls use native routing. Its instructions send substantial task execution and explicit Pi requests to Herdr/Pi with Pi's stronger configured model. Inside Herdr, Hermes uses its inherited session. From an ordinary terminal or dashboard, it selects the running local =default= session explicitly and creates an unfocused workspace. Missing =HERDR_ENV= is not a blocker for this authorized launch path; Hermes never fakes pane context or uses the UI-focused pane. It waits for Pi and reads the result before reporting completion. No automatic jobs, fleet gateway, dashboard, or Desktop service is enabled by this configuration. NixOS retains the former =~/.local/share/hermes= and Desktop state for rollback without importing them into the fresh home.
 
@@ -99,7 +145,7 @@ Hermes selects its native Camofox browser backend with managed persistence. On K
 
 Hermes uses native =web_search= and =web_extract= with the existing =TAVILY_API_KEY=. Native =vision_analyze= resolves its auxiliary model to =gpt-6-luna= through codex-lb. These tools need no MiniMax MCP or separate vision provider. Search, page extraction, and image analysis have been tested. Image crop bounds are original-image pixel coordinates; omitting =region= reads the whole image. The named Responses route was tested with whole-image region omission and deliberate pixel crops. The former Chat-Completions route omitted the strict-mode flag; its upstream Responses default made the optional crop mandatory and led to zero or 1-pixel bounds. Do not work around that mismatch by inventing image dimensions.
 
-On the first run, Pi and OpenCode's bootstraps remove their old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come only from =~/.agents/skills=.
+On the first run, Pi and OpenCode's bootstraps remove their old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come from =~/.agents/skills/= and =~/.agents/vendor/skills/=.
 
 All scripts are safe to run repeatedly. They do not delete unknown packages, plugins, extensions, or application state.
 

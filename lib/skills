@@ -1,0 +1,251 @@
+#!/usr/bin/env python3
+"""Resolve selected Git skills without changing maintained skills or runtime homes."""
+
+import argparse
+import io
+import json
+import re
+import shutil
+import subprocess
+import tarfile
+import tempfile
+from pathlib import Path, PurePosixPath
+
+ROOT = Path(__file__).resolve().parent.parent
+NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+REVISION = re.compile(r"[0-9a-f]{40}")
+
+
+def unique_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def declarations(path, locked=False):
+    data = json.loads(path.read_text(), object_pairs_hook=unique_keys)
+    if (
+        not isinstance(data, dict)
+        or set(data) != {"skills"}
+        or not isinstance(data["skills"], list)
+    ):
+        raise ValueError(f"{path.name}: expected an object containing a skills array")
+    entries = []
+    names = set()
+    allowed = {"name", "git", "path", "ref"} | ({"revision"} if locked else set())
+    for entry in data["skills"]:
+        if (
+            not isinstance(entry, dict)
+            or set(entry) - allowed
+            or not {"name", "git"} <= set(entry)
+        ):
+            raise ValueError(
+                f"{path.name}: each skill needs name and git; optional path and ref"
+            )
+        if any(
+            not isinstance(value, str) or not value.strip() for value in entry.values()
+        ):
+            raise ValueError(f"{path.name}: skill fields must be nonempty strings")
+        entry = {"path": ".", "ref": "HEAD", **entry}
+        name = entry["name"]
+        if not NAME.fullmatch(name) or len(name) > 64:
+            raise ValueError(f"invalid skill name: {name}")
+        if name in names:
+            raise ValueError(f"duplicate skill name: {name}")
+        names.add(name)
+        source_path = PurePosixPath(entry["path"])
+        if (
+            source_path.is_absolute()
+            or ".." in source_path.parts
+            or ".git" in source_path.parts
+        ):
+            raise ValueError(f"{name}: path must stay within the upstream repository")
+        entry["path"] = str(source_path)
+        if entry["git"].startswith("-") or entry["ref"].startswith("-"):
+            raise ValueError(f"{name}: git and ref cannot start with '-'")
+        if locked and not REVISION.fullmatch(entry.get("revision", "")):
+            raise ValueError(f"{name}: lock needs an exact 40-character Git revision")
+        entries.append(entry)
+    return sorted(entries, key=lambda entry: entry["name"])
+
+
+def locked_entries(manifest):
+    locked = declarations(ROOT / "skills.lock", locked=True)
+    if [
+        {key: value for key, value in entry.items() if key != "revision"}
+        for entry in locked
+    ] != manifest:
+        raise ValueError(
+            "skills.lock does not match skills.json; run lib/skills update"
+        )
+    return locked
+
+
+def skill_name(path):
+    text = path.read_text()
+    frontmatter = re.match(r"\A---\r?\n(.*?)\r?\n---(?:\r?\n|\Z)", text, re.DOTALL)
+    if not frontmatter:
+        raise ValueError(f"{path}: expected SKILL.md frontmatter")
+    match = re.search(
+        r"^name:\s*['\"]?([a-z0-9-]+)['\"]?\s*$", frontmatter[1], re.MULTILINE
+    )
+    if not match or not re.search(r"^description:\s*\S", frontmatter[1], re.MULTILINE):
+        raise ValueError(f"{path}: expected name and description in SKILL.md")
+    return match[1]
+
+
+def collisions(entries, existing=False):
+    # Check directory names and declared names, including maintained symlink skills.
+    local = ROOT / "skills"
+    maintained = {path.name for path in local.glob("*")}
+    for path in set(local.rglob("SKILL.md")) | set(local.glob("*/SKILL.md")):
+        maintained.add(skill_name(path))
+    vendor = {entry["name"] for entry in entries}
+    # Rebuilds replace the old generated tree. Only preflight needs to inspect it.
+    if existing:
+        vendor.update(path.name for path in (ROOT / "vendor/skills").glob("*"))
+        for path in (ROOT / "vendor/skills").glob("*/SKILL.md"):
+            vendor.add(skill_name(path))
+    overlap = maintained & vendor
+    if overlap:
+        raise ValueError(
+            f"maintained/vendor skill name collision: {', '.join(sorted(overlap))}"
+        )
+
+
+def git(directory, *arguments, binary=False):
+    command = ["git", "-C", str(directory), *arguments]
+    result = subprocess.run(command, capture_output=True, text=not binary, check=False)
+    if result.returncode:
+        error = result.stderr.decode() if binary else result.stderr
+        raise ValueError(f"Git {' '.join(arguments[:2])} failed: {error.strip()}")
+    return result.stdout if binary else result.stdout.strip()
+
+
+def copy_skill(repository, entry, destination):
+    path = entry["path"]
+    revision = entry["revision"]
+    # Archives omit submodule contents. Refuse them rather than produce an incomplete skill.
+    tree = git(repository, "ls-tree", "-r", revision, "--", path)
+    if any(line.startswith("160000 ") for line in tree.splitlines()):
+        raise ValueError(
+            f"{entry['name']}: submodules are not supported in skill directories"
+        )
+    archive = git(repository, "archive", revision, "--", path, binary=True)
+    destination.mkdir()
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        for member in tar:
+            relative = PurePosixPath(member.name)
+            if path != ".":
+                # Git archives include parent directories of a selected path.
+                if not relative.is_relative_to(path):
+                    continue
+                relative = relative.relative_to(path)
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError(f"{entry['name']}: unsafe archive path {member.name}")
+            if not member.isdir() and not member.isfile():
+                raise ValueError(
+                    f"{entry['name']}: symlinks and special files are not supported"
+                )
+            target = destination / relative
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with tar.extractfile(member) as source, target.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
+    validate_skill(destination, entry["name"])
+
+
+def validate_skill(directory, name):
+    if not (directory / "SKILL.md").is_file():
+        raise ValueError(
+            f"{name}: missing requested skill path or SKILL.md: {directory}"
+        )
+    if skill_name(directory / "SKILL.md") != name:
+        raise ValueError(
+            f"{name}: SKILL.md name must match the materialized directory name"
+        )
+    if any(path != directory / "SKILL.md" for path in directory.rglob("SKILL.md")):
+        raise ValueError(
+            f"{name}: nested skill directories are not supported; select each skill separately"
+        )
+
+
+def realize(entries, update):
+    scratch = ROOT / ".scratch"
+    scratch.mkdir(mode=0o700, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="skills-", dir=scratch) as temporary:
+        work = Path(temporary)
+        staged = work / "skills"
+        staged.mkdir()
+        fetched = {}
+        for entry in entries:
+            ref = entry["ref"] if update else entry["revision"]
+            key = (entry["git"], ref)
+            if key not in fetched:
+                repository = work / f"git-{len(fetched)}"
+                repository.mkdir()
+                git(repository, "init", "--quiet")
+                git(
+                    repository, "fetch", "--quiet", "--depth=1", "--", entry["git"], ref
+                )
+                revision = git(repository, "rev-parse", "FETCH_HEAD^{commit}")
+                fetched[key] = (repository, revision)
+            repository, revision = fetched[key]
+            if not update and revision != entry["revision"]:
+                raise ValueError(
+                    f"{entry['name']}: fetched revision does not match lock"
+                )
+            entry["revision"] = revision
+            copy_skill(repository, entry, staged / entry["name"])
+        # All fetches and layout checks finish before replacing the generated tree or lock.
+        vendor = ROOT / "vendor"
+        vendor.mkdir(exist_ok=True)
+        target = vendor / "skills"
+        if target.is_symlink():
+            raise ValueError(
+                "vendor/skills must be a generated directory, not a symlink"
+            )
+        if target.exists():
+            target.rename(work / "previous")
+        staged.rename(target)
+        if update:
+            lock = work / "skills.lock"
+            lock.write_text(json.dumps({"skills": entries}, indent=2) + "\n")
+            lock.replace(ROOT / "skills.lock")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("command", choices=["materialize", "update", "check"])
+    args = parser.parse_args()
+    try:
+        manifest = declarations(ROOT / "skills.json")
+        entries = manifest if args.command == "update" else locked_entries(manifest)
+        collisions(entries, existing=args.command == "check")
+        if args.command == "check":
+            expected = {entry["name"] for entry in entries}
+            actual = {path.name for path in (ROOT / "vendor/skills").glob("*")}
+            if expected != actual:
+                raise ValueError(
+                    "vendor/skills does not match the lock; run lib/skills materialize"
+                )
+            for entry in entries:
+                validate_skill(ROOT / "vendor/skills" / entry["name"], entry["name"])
+        else:
+            realize(entries, update=args.command == "update")
+            print(
+                f"Materialized {len(entries)} vendor skill(s)"
+                + ("; updated skills.lock" if args.command == "update" else "")
+            )
+    except (OSError, ValueError, tarfile.TarError) as error:
+        parser.exit(1, f"skills: {error}\n")
+
+
+if __name__ == "__main__":
+    main()
