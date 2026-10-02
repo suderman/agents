@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null
+export GIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.com
+export GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.com
+# Run the actual workflow step against local repositories only.
+awk '
+  /name: Commit and push if flake.lock changed/ { step = 1; next }
+  step && /run: \|/ { body = 1; next }
+  body && /^          / { print substr($0, 11); next }
+  body { exit }
+' "$repo/.github/workflows/update-flake-lock.yml" >"$fixture/publish"
+[[ -s "$fixture/publish" ]]
+bash -n "$fixture/publish"
+
+for scenario in concurrent conflict unchanged; do
+  root="$fixture/$scenario"
+  mkdir "$root"
+  git init -q --bare --initial-branch=main "$root/origin"
+  git clone -q "$root/origin" "$root/writer" 2>/dev/null
+  printf 'old lock\n' >"$root/writer/flake.lock"
+  git -C "$root/writer" add flake.lock
+  git -C "$root/writer" commit -q -m 'Initial lock'
+  git -C "$root/writer" push -q
+  git clone -q "$root/origin" "$root/worker"
+  git -C "$root/worker" checkout -q -B main refs/remotes/origin/main
+  if [[ "$scenario" != unchanged ]]; then
+    printf 'bot lock\n' >"$root/worker/flake.lock"
+  fi
+  if [[ "$scenario" == conflict ]]; then
+    printf 'human lock\n' >"$root/writer/flake.lock"
+  else
+    printf 'human work\n' >"$root/writer/notes"
+  fi
+  git -C "$root/writer" add .
+  git -C "$root/writer" commit -q -m 'Concurrent human change'
+  git -C "$root/writer" push -q
+  human="$(git -C "$root/writer" rev-parse HEAD)"
+
+  if (cd "$root/worker" && bash -e "$fixture/publish") >"$root/log" 2>&1; then
+    [[ "$scenario" != conflict ]]
+  elif [[ "$scenario" != conflict ]]; then
+    printf 'FAIL: %s\n' "$scenario"
+    grep -E 'rejected|error:|fatal:' "$root/log" || true
+    exit 1
+  fi
+  remote="$(git --git-dir="$root/origin" rev-parse main)"
+  if [[ "$scenario" == concurrent ]]; then
+    [[ "$(git --git-dir="$root/origin" show main:flake.lock)" == 'bot lock' ]]
+    [[ "$(git --git-dir="$root/origin" show main:notes)" == 'human work' ]]
+    [[ "$(git --git-dir="$root/origin" rev-parse main^)" == "$human" ]]
+  else
+    [[ "$remote" == "$human" ]]
+    if [[ "$scenario" == conflict ]]; then
+      grep -q 'CONFLICT (content): Merge conflict in flake.lock' "$root/log"
+      [[ "$(git --git-dir="$root/origin" show main:flake.lock)" == 'human lock' ]]
+    else
+      grep -q 'No changes to flake.lock' "$root/log"
+    fi
+  fi
+  printf 'PASS: %s\n' "$scenario"
+done

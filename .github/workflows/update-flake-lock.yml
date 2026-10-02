@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout (v7.0.1)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
 
       - name: Set up Nix (v31.11.1)
         uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24
@@ -37,6 +39,7 @@ jobs:
           nix flake check --all-systems
           pi/test-bootstrap
           tests/test-prompts
+          tests/test-update-flake-lock
           python3 -B skills/sheepdog/scripts/test_sheepdog.py
           nix shell nixpkgs#yq-go --command hermes/test-bootstrap
           nix build .#pi .#opencode .#hermes-agent --no-link
@@ -55,4 +58,5 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add flake.lock
           git commit -m "Automated flake.lock update"
+          git pull --rebase
           git push
