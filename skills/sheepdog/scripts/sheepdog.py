@@ -98,6 +98,8 @@ def agents(run):
                     raise RuntimeError("Worker repository context unavailable")
                 if cwd and not Path(cwd).resolve().is_relative_to(Path(run["repo"])):
                     raise RuntimeError(f"Worker {field} left assigned repository")
+        if role == "supervisor":
+            run["supervisor_observed"] = {"agent_status": agent["agent_status"]}
         result[role] = agent
     return result
 
@@ -159,6 +161,24 @@ def handoff(directory, run):
         f"Worker last observed: ={status}=. On stop/expiry: {run.get('outcome', activity)}.\n"
         "Worker activity is an observation, not proof of completion or cancellation.\n\n"
     )
+    if "review_hard_seconds" in run:
+        text += (
+            "** Review clocks\n\n"
+            f"Soft acknowledgement threshold: {run['review_seconds']} seconds. "
+            f"Hard timeout: {run['review_hard_seconds']} seconds. "
+            f"Absolute watch expiry: {run['expires']}.\n"
+        )
+    else:
+        text += "** Review clocks\n\nLegacy binding: the original review deadline remains hard.\n"
+    review = run.get("review")
+    if review:
+        hard_end = min(review.get("hard_deadline", review["deadline"]), run["expires"])
+        text += (
+            f"Review {review['id']}: "
+            f"{'soft overdue' if 'overdue_at' in review else 'awaiting acknowledgement'}. "
+            f"Recorded deadline: {review['deadline']}. Hard end: {hard_end}.\n"
+        )
+    text += "\n"
     for heading, key in (
         ("Accepted work", "accepted"),
         ("Verification", "verification"),
@@ -180,10 +200,17 @@ def finish(directory, run, status, reason):
         agents(run)
     except FAILURES as error:
         run["worker_observed"] = {"agent_status": "unknown"}
+        run["supervisor_observed"] = {"agent_status": "unknown"}
         reason += f"; latest worker state unavailable: {error}"
     run["status"] = status
     run["stopping_reason"] = reason
-    record(directory, status, reason=reason, worker=run["worker_observed"])
+    record(
+        directory,
+        status,
+        reason=reason,
+        worker=run["worker_observed"],
+        supervisor=run["supervisor_observed"],
+    )
 
 
 def save(directory, run):
@@ -305,20 +332,78 @@ def submit(directory, run, *args):
         raise
 
 
-def tick(directory, run, now):
-    if run["status"] != "active":
+def review_limits(soft, hard):
+    if type(soft) is not int or not 1 <= soft <= 3600:
+        raise RuntimeError("Review soft threshold must be 1..3600 seconds")
+    if type(hard) is not int or not soft <= hard <= 7200:
+        raise RuntimeError(
+            "Review hard timeout must be >= soft threshold and <= 7200 seconds"
+        )
+
+
+def watch_expired(directory, run, now):
+    if now < run["expires"]:
         return False
-    if now >= run["expires"]:
-        finish(directory, run, "expired", "Watch budget expired; Pi is not interrupted")
+    finish(directory, run, "expired", "Watch budget expired; Pi is not interrupted")
+    return True
+
+
+def review_timeout(directory, run, now, current):
+    review = run["review"]
+    if review is None:
         return False
-    current = agents(run)
-    if run["review"] and now >= run["review"]["deadline"]:
+    # Old bindings keep their original hard deadline. Never widen old authority.
+    if ("review_hard_seconds" in run) != ("hard_deadline" in review):
+        raise RuntimeError("Incomplete review clock binding; no input sent")
+    if "review_hard_seconds" not in run:
+        hard = review["deadline"]
+    else:
+        review_limits(run["review_seconds"], run["review_hard_seconds"])
+        hard = review["hard_deadline"]
+        if (
+            hard != review["time"] + run["review_hard_seconds"]
+            or review["deadline"] != review["time"] + run["review_seconds"]
+        ):
+            raise RuntimeError("Invalid review clock binding; no input sent")
+    if now >= hard:
         finish(
             directory,
             run,
             "stalled",
-            f"Review {run['review']['id']} was not acknowledged before its deadline; no replay",
+            f"Review {review['id']} hard acknowledgement timeout exceeded; no replay",
         )
+        return True
+    if (
+        "review_hard_seconds" in run
+        and now >= review["deadline"]
+        and "overdue_at" not in review
+    ):
+        review["overdue_at"] = now
+        # Persist the warning latch first so watcher loss cannot duplicate it.
+        save(directory, run)
+        record(
+            directory,
+            "review_overdue",
+            review=review["id"],
+            soft_deadline=review["deadline"],
+            hard_end=min(hard, run["expires"]),
+            supervisor_status=current["supervisor"]["agent_status"],
+            worker_status=current["worker"]["agent_status"],
+        )
+    return False
+
+
+def tick(directory, run, now):
+    if run["status"] != "active":
+        return False
+    if watch_expired(directory, run, now):
+        return False
+    review_start = now
+    current = agents(run)
+    now = max(now, time.time())
+    if watch_expired(directory, run, now):
+        return False
+    if review_timeout(directory, run, now, current):
         return False
     worker = current["worker"]
     observation = {
@@ -338,28 +423,50 @@ def tick(directory, run, now):
         return True
     if current["supervisor"]["agent_status"] not in READY:
         return True
+    if "review_hard_seconds" in run:
+        review_limits(run["review_seconds"], run["review_hard_seconds"])
+    visible_output = output(run)
+    latest = agents(run)
+    now = time.time()
+    if watch_expired(directory, run, now):
+        return False
+    if latest["supervisor"]["agent_status"] not in READY:
+        # Capture took time; an unsent review needs no ACK and remains pending.
+        return True
+    # Fresh clocks start at submission after capture. Legacy clocks keep their
+    # original tick timestamp. Delivery uncertainty never permits a clock reset.
+    if "review_hard_seconds" in run:
+        review_start = now
     run["counter"] += 1
     review = {
         "id": run["counter"],
-        "time": now,
-        "deadline": now + run["review_seconds"],
+        "time": review_start,
+        "deadline": review_start + run["review_seconds"],
         "worker_status": worker["agent_status"],
         "worker_seq": worker["state_change_seq"],
         "acted": False,
     }
+    if "review_hard_seconds" in run:
+        review["hard_deadline"] = review_start + run["review_hard_seconds"]
     run["review"] = review
     run["pending"] = False
     evidence = directory / "review.json"
     evidence.write_text(
-        json.dumps(review | {"worker": worker, "visible_output": output(run)}, indent=2)
+        json.dumps(
+            review
+            | {
+                "hard_end": min(
+                    review.get("hard_deadline", review["deadline"]), run["expires"]
+                ),
+                "review_seconds": run["review_seconds"],
+                "review_hard_seconds": run.get("review_hard_seconds"),
+                "worker": worker,
+                "visible_output": visible_output,
+            },
+            indent=2,
+        )
     )
     evidence.chmod(0o600)
-    latest = agents(run)
-    if latest["supervisor"]["agent_status"] not in READY:
-        # Capture took time; an unsent review needs no ACK and can remain pending.
-        run["review"] = None
-        run["pending"] = True
-        return True
     # Persist before submitting. A timeout is ambiguous, never a reason to resend.
     save(directory, run)
     message = (
@@ -388,23 +495,16 @@ def review_guard(run, review_id):
         raise RuntimeError("No active review")
     if run["review"]["id"] != review_id:
         raise RuntimeError("Stale review ID")
-    if time.time() >= run["expires"]:
-        finish(
-            Path(run["directory"]),
-            run,
-            "expired",
-            "Watch budget expired; Pi is not interrupted",
-        )
+    directory = Path(run["directory"])
+    if watch_expired(directory, run, time.time()):
         raise RuntimeError("Watch budget expired")
-    if time.time() >= run["review"]["deadline"]:
-        finish(
-            Path(run["directory"]),
-            run,
-            "stalled",
-            "Review acknowledgement deadline exceeded; no replay",
-        )
-        raise RuntimeError("Review deadline exceeded")
-    return agents(run)
+    current = agents(run)
+    now = time.time()
+    if watch_expired(directory, run, now):
+        raise RuntimeError("Watch budget expired")
+    if review_timeout(directory, run, now, current):
+        raise RuntimeError("Review hard timeout exceeded")
+    return current
 
 
 def initialize(args):
@@ -416,8 +516,7 @@ def initialize(args):
         raise RuntimeError("Runtime and mandate must be outside the worker repository")
     if not 1 <= args.interval <= 3600 or not 1 <= args.minutes <= 120:
         raise RuntimeError("Interval must be 1..3600 seconds; budget 1..120 minutes")
-    if not 1 <= args.review_seconds <= 3600:
-        raise RuntimeError("Review deadline must be 1..3600 seconds")
+    review_limits(args.review_seconds, args.review_hard_seconds)
     if not args.supervisor_model.strip() or not args.model_evidence.strip():
         raise RuntimeError("Supply the observed supervisor model and session evidence")
     if task.read_text().splitlines().count(args.task_heading) != 1:
@@ -436,6 +535,7 @@ def initialize(args):
         "supervisor_model": args.supervisor_model,
         "model_evidence": args.model_evidence,
         "review_seconds": args.review_seconds,
+        "review_hard_seconds": args.review_hard_seconds,
         "progress": {
             "accepted": "None recorded.",
             "verification": "None recorded.",
@@ -493,6 +593,9 @@ def initialize(args):
         supervisor_model=run["supervisor_model"],
         model_evidence=run["model_evidence"],
         notification=run["notification"],
+        review_seconds=run["review_seconds"],
+        review_hard_seconds=run["review_hard_seconds"],
+        expires=run["expires"],
     )
     if not args.notification_route:
         print(
@@ -513,7 +616,18 @@ def main():
     init.add_argument("--task-heading", required=True)
     init.add_argument("--supervisor-model", required=True)
     init.add_argument("--model-evidence", required=True)
-    init.add_argument("--review-seconds", type=int, default=300)
+    init.add_argument(
+        "--review-seconds",
+        type=int,
+        default=900,
+        help="soft ACK warning threshold, 1..3600 seconds (default: 900); does not stop the watch",
+    )
+    init.add_argument(
+        "--review-hard-seconds",
+        type=int,
+        default=1800,
+        help="hard ACK timeout, >= soft and <= 7200 seconds (default: 1800); capped by watch expiry",
+    )
     init.add_argument("--interval", type=int, default=60)
     init.add_argument("--minutes", type=int, default=30)
     init.add_argument("--steer", action="store_true")
@@ -588,6 +702,12 @@ def main():
                 time.sleep(1)
     else:
         with locked(directory) as run:
+            # Read correction before fresh identity, activity, and clock checks.
+            text = (
+                args.message_file.read_text().strip()
+                if args.command == "steer"
+                else None
+            )
             current = (
                 review_guard(run, args.review)
                 if args.command in ("ack", "steer", "interrupt", "recover")
@@ -730,7 +850,6 @@ def main():
                         raise RuntimeError(
                             "Confirm cancellation and empty editor before steering"
                         )
-                    text = args.message_file.read_text().strip()
                     if not text or len(text) > 12000:
                         raise RuntimeError(
                             "Correction must contain 1..12000 characters"

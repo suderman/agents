@@ -9,4 +9,8 @@ compatibility: Hermes supervisor, interactive Pi worker, Herdr, Python 3 on Linu
 
 Read `sheepdog.org` completely before starting or handling a review. Resolve its
 script paths relative to this skill directory. This capability is opt-in, not a
-global permission to control agents or publish projects.
+global permission to control agents or publish projects. Fresh runs default to a
+900-second soft ACK warning and a separate 1800-second hard timeout, capped by
+watch expiry. `--review-seconds` sets the soft threshold;
+`--review-hard-seconds` sets the hard timeout. Legacy bindings retain their
+original hard deadline and must not be migrated or revived.

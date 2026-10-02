@@ -11,6 +11,7 @@ import threading
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
@@ -46,7 +47,7 @@ class WatchChecks(unittest.TestCase):
             "worker": agent("pi", "working"),
             "supervisor": agent("hermes", "idle"),
         }
-        self.state = {
+        self.state: dict[str, Any] = {
             "status": "active",
             "expires": 1000,
             "next_review": 60,
@@ -95,6 +96,7 @@ class WatchChecks(unittest.TestCase):
         with (
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=self.fake_call),
+            patch.object(sheepdog.time, "time", return_value=now),
         ):
             return sheepdog.tick(self.directory, self.state, now)
 
@@ -127,6 +129,7 @@ class WatchChecks(unittest.TestCase):
         with (
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=guarded_read),
+            patch.object(sheepdog.time, "time", return_value=60),
         ):
             sheepdog.tick(self.directory, self.state, 60)
         self.assertEqual(len(self.prompts()), 1)
@@ -165,6 +168,7 @@ class WatchChecks(unittest.TestCase):
         with (
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=become_busy),
+            patch.object(sheepdog.time, "time", return_value=60),
         ):
             sheepdog.tick(self.directory, self.state, 60)
         self.assertFalse(self.prompts())
@@ -214,6 +218,9 @@ class WatchChecks(unittest.TestCase):
         self.assertFalse(self.calls)
 
     def test_timeout_latches_review_and_does_not_resend(self):
+        self.state["review_hard_seconds"] = 1800
+        self.state["expires"] = 4000
+
         def uncertain(run, *args):
             if args[:2] == ("agent", "prompt"):
                 raise subprocess.TimeoutExpired("herdr", 15)
@@ -222,11 +229,15 @@ class WatchChecks(unittest.TestCase):
         with (
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=uncertain),
+            patch.object(sheepdog.time, "time", return_value=61),
             self.assertRaises(subprocess.TimeoutExpired),
         ):
             sheepdog.tick(self.directory, self.state, 61)
         self.assertIsNotNone(self.state["review"])
-        self.tick(62)
+        review = copy.deepcopy(self.state["review"])
+        self.tick(2000)
+        self.assertEqual(self.state["status"], "paused")
+        self.assertEqual(self.state["review"], review)
         self.assertFalse(self.prompts())
 
     def test_budget_and_human_stop_do_not_stop_worker(self):
@@ -237,11 +248,11 @@ class WatchChecks(unittest.TestCase):
         self.assertFalse(self.prompts())
         self.assertFalse(any(c[:2] == ("agent", "send-keys") for c in self.calls))
 
-    def command(self, *args):
+    def command(self, *args, now=100):
         with (
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=self.fake_call),
-            patch.object(sheepdog.time, "time", return_value=100),
+            patch.object(sheepdog.time, "time", return_value=now),
             patch("sys.argv", ["sheepdog.py", args[0], str(self.directory), *args[1:]]),
         ):
             sheepdog.main()
@@ -436,14 +447,24 @@ class WatchChecks(unittest.TestCase):
             sheepdog.claim(self.base / "other", self.state)
         self.assertFalse(self.prompts())
 
-    def test_review_deadline_stalls_without_replay_or_keys(self):
+    def test_working_supervisor_keeps_review_past_five_minute_soft_threshold(self):
+        self.state["review_hard_seconds"] = 1800
+        self.state["expires"] = 4000
+        self.tick(60)
+        self.current["supervisor"]["agent_status"] = "working"
+        self.assertTrue(self.tick(361))
+        self.assertEqual(self.state["status"], "active")
+        self.assertEqual(self.state["review"]["id"], 1)
+        self.assertEqual(len(self.prompts()), 1)
+
+    def test_legacy_review_deadline_stalls_without_replay_or_keys(self):
         self.tick(60)
         self.assertFalse(self.tick(360))
         self.assertEqual(self.state["status"], "stalled")
         self.assertEqual(len(self.prompts()), 1)
         sheepdog.save(self.directory, self.state)
         handoff = (self.directory / "handoff.org").read_text()
-        self.assertIn("was not acknowledged", handoff)
+        self.assertIn("hard acknowledgement timeout", handoff)
         self.assertIn("continues unsupervised", handoff)
         self.assertTrue(Path(self.state["owner_file"]).exists())
         with (
@@ -452,13 +473,13 @@ class WatchChecks(unittest.TestCase):
         ):
             sheepdog.claim(self.base / "other", self.state)
 
-    def test_late_ack_or_steer_cannot_bypass_review_deadline(self):
+    def test_legacy_late_ack_or_steer_cannot_bypass_review_deadline(self):
         self.prepare_action()
         with (
             patch.object(sheepdog.time, "time", return_value=361),
             patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
             patch.object(sheepdog, "call", side_effect=self.fake_call),
-            self.assertRaisesRegex(RuntimeError, "Review deadline"),
+            self.assertRaisesRegex(RuntimeError, "Review hard timeout"),
         ):
             sheepdog.review_guard(self.state, 1)
         self.assertEqual(self.state["status"], "stalled")
@@ -526,6 +547,7 @@ class WatchChecks(unittest.TestCase):
             model_evidence="Current session metadata, session-test, at launch",
             notification_route="",
             review_seconds=300,
+            review_hard_seconds=1800,
             interval=60,
             minutes=30,
             steer=True,
@@ -546,6 +568,16 @@ class WatchChecks(unittest.TestCase):
             bound = sheepdog.read_record(args.run / "state.json")
             self.assertEqual(bound["supervisor_model"], "observed-model")
             self.assertEqual(bound["task"], str(task))
+            self.assertEqual(
+                (bound["review_seconds"], bound["review_hard_seconds"]), (300, 1800)
+            )
+            self.assertIn(
+                "Hard timeout: 1800 seconds", (args.run / "handoff.org").read_text()
+            )
+            init_event = json.loads(
+                (args.run / "events.jsonl").read_text().splitlines()[0]
+            )
+            self.assertEqual(init_event["review_hard_seconds"], 1800)
             self.assertIsNone(bound["recovery"])
             self.assertEqual(bound["notification"]["route"], "")
             self.assertEqual(bound["notification"]["status"], "not attempted")
@@ -795,29 +827,44 @@ class WatchChecks(unittest.TestCase):
             self.command("evidence", "--since", "2026-10-01T19:59:00Z")
         self.assertFalse(self.prompts())
 
-    def test_recovery_needs_safe_state_and_evidence(self):
-        prompt = self.prepare_action()
-        self.command("interrupt", "--review", "1")
+    def test_recovery_needs_safe_state_and_evidence_past_soft_threshold(self):
+        prompt = self.fresh_review()
+        self.command("interrupt", "--review", "1", now=362)
         with self.assertRaisesRegex(RuntimeError, "awaiting recovery"):
             self.command(
-                "recover", "--review", "1", "--evidence", "Still investigating"
+                "recover", "--review", "1", "--evidence", "Still investigating", now=363
             )
         self.current["worker"]["agent_status"] = "idle"
         self.command(
-            "steer", "--review", "1", "--editor-empty", "--message-file", prompt
+            "steer",
+            "--review",
+            "1",
+            "--editor-empty",
+            "--message-file",
+            prompt,
+            now=364,
         )
         with self.assertRaisesRegex(RuntimeError, "with evidence"):
-            self.command("recover", "--review", "1", "--evidence", " ")
-        self.current["worker"]["agent_status"] = "blocked"
-        with self.assertRaisesRegex(RuntimeError, "with evidence"):
-            self.command(
-                "recover", "--review", "1", "--evidence", "No safe recovery yet"
-            )
+            self.command("recover", "--review", "1", "--evidence", " ", now=365)
+        for status in ("blocked", "unknown"):
+            self.current["worker"]["agent_status"] = status
+            with (
+                self.subTest(status=status),
+                self.assertRaisesRegex(RuntimeError, "with evidence"),
+            ):
+                self.command(
+                    "recover",
+                    "--review",
+                    "1",
+                    "--evidence",
+                    "No safe recovery yet",
+                    now=366,
+                )
         self.reload_state()
         self.assertIsNotNone(self.state["recovery"])
 
-    def test_uncertain_correction_cannot_be_recovered_or_replayed(self):
-        prompt = self.prepare_action()
+    def test_uncertain_correction_cannot_be_recovered_or_replayed_past_soft(self):
+        prompt = self.fresh_review()
         original = self.fake_call
         attempts = []
 
@@ -831,16 +878,25 @@ class WatchChecks(unittest.TestCase):
             patch.object(self, "fake_call", side_effect=uncertain),
             self.assertRaises(subprocess.TimeoutExpired),
         ):
-            self.command("steer", "--review", "1", "--message-file", prompt)
+            self.command("steer", "--review", "1", "--message-file", prompt, now=362)
         self.reload_state()
         self.assertEqual(self.state["status"], "paused")
         self.assertEqual(self.state["recovery"]["phase"], "correction_pending")
         with self.assertRaisesRegex(RuntimeError, "No active review"):
             self.command(
-                "recover", "--review", "1", "--evidence", "No receipt evidence"
+                "recover", "--review", "1", "--evidence", "No receipt evidence", now=363
             )
         with self.assertRaisesRegex(RuntimeError, "No active review"):
-            self.command("steer", "--review", "1", "--message-file", prompt)
+            self.command("steer", "--review", "1", "--message-file", prompt, now=364)
+        with self.assertRaisesRegex(RuntimeError, "No active review"):
+            self.command(
+                "ack",
+                "--review",
+                "1",
+                "--summary",
+                "Cannot bypass delivery latch",
+                now=365,
+            )
         self.assertEqual(len(attempts), 1)
         self.assertTrue(Path(self.state["owner_file"]).exists())
 
@@ -899,6 +955,452 @@ class WatchChecks(unittest.TestCase):
                     json.dumps({"run": str(self.directory)})
                 )
                 self.state["counter"] = 0
+
+    def fresh_review(self):
+        self.state["review_hard_seconds"] = 1800
+        self.state["expires"] = 4000
+        return self.prepare_action()
+
+    def events(self):
+        return [
+            json.loads(line)
+            for line in (self.directory / "events.jsonl").read_text().splitlines()
+        ]
+
+    def test_soft_overdue_is_durable_once_without_reminders_or_renewal(self):
+        self.fresh_review()
+        original = copy.deepcopy(self.state["review"])
+        expiry = self.state["expires"]
+        self.current["supervisor"]["agent_status"] = "working"
+        for now in (361, 500, 900):
+            self.assertTrue(self.tick(now))
+            sheepdog.save(self.directory, self.state)
+            self.reload_state()
+        warnings = [e for e in self.events() if e["event"] == "review_overdue"]
+        self.assertEqual(len(warnings), 1)
+        self.assertEqual(warnings[0]["supervisor_status"], "working")
+        self.assertEqual(self.state["review"], original | {"overdue_at": 361})
+        self.assertEqual(self.state["expires"], expiry)
+        self.assertTrue(self.state["pending"])
+        self.assertFalse(self.prompts())
+        self.assertFalse(any(c[:2] == ("agent", "send-keys") for c in self.calls))
+        self.assertIn("overdue", (self.directory / "handoff.org").read_text())
+
+    def test_overdue_latch_is_saved_before_warning_event(self):
+        self.fresh_review()
+        original = sheepdog.record
+
+        def observe_warning(directory, event, **fields):
+            if event == "review_overdue":
+                persisted = sheepdog.read_record(directory / "state.json")
+                self.assertEqual(persisted["review"].get("overdue_at"), 362)
+            return original(directory, event, **fields)
+
+        with patch.object(sheepdog, "record", side_effect=observe_warning):
+            self.tick(362)
+        self.reload_state()
+        self.tick(363)
+        self.assertEqual(sum(e["event"] == "review_overdue" for e in self.events()), 1)
+        self.assertFalse(self.prompts())
+
+    def test_all_controls_can_complete_after_soft_threshold(self):
+        prompt = self.fresh_review()
+        self.current["supervisor"]["agent_status"] = "working"
+        self.command("interrupt", "--review", "1", now=362)
+        self.current["worker"]["agent_status"] = "idle"
+        self.command(
+            "steer",
+            "--review",
+            "1",
+            "--message-file",
+            prompt,
+            "--editor-empty",
+            now=363,
+        )
+        self.current["worker"]["agent_status"] = "working"
+        self.command(
+            "recover",
+            "--review",
+            "1",
+            "--evidence",
+            "Correction received and check resumed",
+            now=364,
+        )
+        self.command("ack", "--review", "1", "--summary", "Verified", now=365)
+        self.reload_state()
+        self.assertEqual(self.state["status"], "active")
+        self.assertIsNone(self.state["review"])
+        self.assertIsNone(self.state["recovery"])
+        self.assertEqual(self.state["expires"], 4000)
+        self.assertEqual(self.state["next_review"], 425)
+        self.assertEqual(len(self.prompts()), 1)
+        self.assertEqual(sum(c[:2] == ("agent", "send-keys") for c in self.calls), 1)
+        self.assertEqual(sum(e["event"] == "review_overdue" for e in self.events()), 1)
+
+    def test_ready_supervisor_can_ack_at_last_second_before_hard_cap(self):
+        self.fresh_review()
+        for status in ("idle", "done"):
+            with self.subTest(status=status):
+                original = copy.deepcopy(self.state)
+                self.current["supervisor"]["agent_status"] = status
+                sheepdog.save(self.directory, original)
+                self.command(
+                    "ack", "--review", "1", "--summary", "Ready late ACK", now=1860
+                )
+                self.reload_state()
+                self.assertIsNone(self.state["review"])
+                self.assertEqual(self.state["expires"], 4000)
+                self.state = original
+        self.assertFalse(self.prompts())
+
+    def test_hard_timeout_stops_regardless_of_supervisor_activity(self):
+        self.fresh_review()
+        original = copy.deepcopy(self.state)
+        for supervisor in ("working", "idle", "done", "blocked", "unknown"):
+            for worker in ("working", "blocked", "unknown"):
+                with self.subTest(supervisor=supervisor, worker=worker):
+                    self.state = copy.deepcopy(original)
+                    self.current["supervisor"]["agent_status"] = supervisor
+                    self.current["worker"]["agent_status"] = worker
+                    self.assertFalse(self.tick(1861))
+                    self.assertEqual(self.state["status"], "stalled")
+                    self.assertIn(
+                        "hard acknowledgement timeout", self.state["stopping_reason"]
+                    )
+                    self.assertEqual(
+                        self.events()[-1]["worker"]["agent_status"], worker
+                    )
+                    self.assertEqual(
+                        self.events()[-1]["supervisor"]["agent_status"], supervisor
+                    )
+                    self.assertFalse(self.tick(1862))
+                    self.assertEqual(self.state["expires"], 4000)
+        self.assertFalse(self.prompts())
+
+    def test_controls_reject_hard_timeout_without_watcher_tick(self):
+        prompt = self.fresh_review()
+        original = copy.deepcopy(self.state)
+        for command, extra in (
+            ("ack", ["--summary", "Late"]),
+            ("steer", ["--message-file", prompt]),
+            ("interrupt", []),
+            ("recover", ["--evidence", "Late"]),
+        ):
+            with self.subTest(command=command):
+                sheepdog.save(self.directory, copy.deepcopy(original))
+                with self.assertRaisesRegex(RuntimeError, "Review hard timeout"):
+                    self.command(command, "--review", "1", *extra, now=1861)
+                self.reload_state()
+                self.assertEqual(self.state["status"], "stalled")
+                with self.assertRaisesRegex(RuntimeError, "No active review"):
+                    self.command(command, "--review", "1", *extra, now=1862)
+        self.assertFalse(self.prompts())
+        self.assertFalse(any(c[:2] == ("agent", "send-keys") for c in self.calls))
+
+    def test_overall_expiry_wins_over_both_review_clocks(self):
+        self.fresh_review()
+        self.state["expires"] = 200
+        self.assertFalse(self.tick(200))
+        self.assertEqual(self.state["status"], "expired")
+        self.assertIn("budget expired", self.state["stopping_reason"])
+        self.assertFalse(self.prompts())
+        self.assertFalse(any(e["event"] == "review_overdue" for e in self.events()))
+
+    def test_expiry_during_fresh_agent_checks_cannot_accept_ack(self):
+        self.fresh_review()
+        self.state["expires"] = 500
+        sheepdog.save(self.directory, self.state)
+        clock = [499]
+        original = self.fake_call
+
+        def slow_get(run, *args):
+            result = original(run, *args)
+            if args[:3] == ("agent", "get", "supervisor"):
+                clock[0] = 500
+            return result
+
+        with (
+            patch.object(self, "fake_call", side_effect=slow_get),
+            patch.object(sheepdog.time, "time", side_effect=lambda: clock[0]),
+            patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+            patch.object(sheepdog, "call", side_effect=slow_get),
+            self.assertRaisesRegex(RuntimeError, "Watch budget expired"),
+        ):
+            sheepdog.review_guard(self.state, 1)
+        self.assertEqual(self.state["status"], "expired")
+
+    def test_clocks_start_after_capture_only_for_fresh_bindings(self):
+        original_state = copy.deepcopy(self.state)
+        original = self.fake_call
+        for fresh in (False, True):
+            with self.subTest(fresh=fresh):
+                self.state = copy.deepcopy(original_state)
+                if fresh:
+                    self.state["review_hard_seconds"] = 1800
+                clock = [60]
+
+                def slow_capture(run, *args, clock=clock):
+                    result = original(run, *args)
+                    if args[:2] == ("agent", "read"):
+                        clock[0] = 120
+                    return result
+
+                with (
+                    patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+                    patch.object(sheepdog, "call", side_effect=slow_capture),
+                    patch.object(
+                        sheepdog.time, "time", side_effect=lambda clock=clock: clock[0]
+                    ),
+                ):
+                    self.assertTrue(sheepdog.tick(self.directory, self.state, 60))
+                self.assertEqual(self.state["review"]["time"], 120 if fresh else 60)
+                self.assertEqual(
+                    self.state["review"]["deadline"], 420 if fresh else 360
+                )
+                if fresh:
+                    self.assertEqual(self.state["review"]["hard_deadline"], 1920)
+
+    def test_expiry_during_capture_never_submits_or_leaves_unsent_review(self):
+        self.state["review_hard_seconds"] = 1800
+        self.state["expires"] = 100
+        original = self.fake_call
+        clock = [60]
+
+        def slow_capture(run, *args):
+            result = original(run, *args)
+            if args[:2] == ("agent", "read"):
+                clock[0] = 100
+                self.current["supervisor"]["agent_status"] = "working"
+            return result
+
+        with (
+            patch.object(sheepdog, "socket_identity", return_value=[1, 2]),
+            patch.object(sheepdog, "call", side_effect=slow_capture),
+            patch.object(sheepdog.time, "time", side_effect=lambda: clock[0]),
+        ):
+            self.assertFalse(sheepdog.tick(self.directory, self.state, 60))
+        self.assertEqual(self.state["status"], "expired")
+        self.assertIsNone(self.state["review"])
+        self.assertFalse(self.prompts())
+
+    def test_default_clocks_and_evidence_cap_without_extending_watch(self):
+        self.state["review_seconds"] = 900
+        self.state["review_hard_seconds"] = 1800
+        self.tick(60)
+        review = copy.deepcopy(self.state["review"])
+        evidence = json.loads((self.directory / "review.json").read_text())
+        self.assertEqual((review["deadline"], review["hard_deadline"]), (960, 1860))
+        self.assertEqual(evidence["hard_end"], 1000)
+        self.assertEqual(
+            (evidence["review_seconds"], evidence["review_hard_seconds"]), (900, 1800)
+        )
+        self.assertTrue(self.tick(961))
+        self.assertFalse(self.tick(1000))
+        self.assertEqual(self.state["status"], "expired")
+        self.assertEqual(self.state["expires"], 1000)
+        self.assertEqual(len(self.prompts()), 1)
+
+    def test_invalid_new_clock_values_cannot_widen_binding(self):
+        self.fresh_review()
+        original = copy.deepcopy(self.state)
+        for hard_seconds, hard_deadline in (
+            (1800, float("nan")),
+            (1800, 99999),
+            (7201, 7262),
+            (0, 61),
+        ):
+            with self.subTest(hard_seconds=hard_seconds, hard_deadline=hard_deadline):
+                self.state = copy.deepcopy(original)
+                self.state["review_hard_seconds"] = hard_seconds
+                self.state["review"]["hard_deadline"] = hard_deadline
+                with self.assertRaisesRegex(RuntimeError, "[Rr]eview"):
+                    self.tick(362)
+        self.assertFalse(self.prompts())
+
+    def test_incomplete_clock_bindings_fail_closed(self):
+        self.fresh_review()
+        original = copy.deepcopy(self.state)
+        for field, location in (
+            ("review_hard_seconds", "run"),
+            ("hard_deadline", "review"),
+        ):
+            with self.subTest(field=field):
+                self.state = copy.deepcopy(original)
+                target = self.state if location == "run" else self.state["review"]
+                del target[field]
+                with self.assertRaisesRegex(RuntimeError, "Incomplete review clock"):
+                    self.tick(362)
+        self.assertFalse(self.prompts())
+
+    def test_legacy_deadline_remains_hard_and_never_migrates(self):
+        self.prepare_action()
+        original = copy.deepcopy(self.state)
+        self.assertTrue(self.tick(360))
+        self.assertNotIn("hard_deadline", self.state["review"])
+        self.assertNotIn("review_hard_seconds", self.state)
+        self.assertFalse(self.tick(361))
+        for status in ("stalled", "stopped", "paused", "expired"):
+            with self.subTest(status=status):
+                self.state = copy.deepcopy(original) | {"status": status}
+                self.assertFalse(self.tick(362))
+                self.assertEqual(self.state["status"], status)
+        self.assertFalse(self.prompts())
+        self.assertFalse(any(e["event"] == "review_overdue" for e in self.events()))
+
+    def test_clock_limits_and_cli_defaults(self):
+        for soft, hard in ((1, 1), (300, 1800), (900, 1800), (3600, 7200)):
+            sheepdog.review_limits(soft, hard)
+        for soft, hard in (
+            (0, 1800),
+            (-1, 1800),
+            (3601, 7200),
+            (300, 0),
+            (300, -1),
+            (300, 299),
+            (900, 7201),
+            (300, float("nan")),
+            (True, 1800),
+        ):
+            with (
+                self.subTest(soft=soft, hard=hard),
+                self.assertRaisesRegex(RuntimeError, "Review"),
+            ):
+                sheepdog.review_limits(soft, hard)
+        argv = [
+            "sheepdog.py",
+            "init",
+            str(self.base / "new"),
+            "--socket",
+            "/socket",
+            "--repo",
+            self.state["repo"],
+            "--mandate",
+            "/mandate.org",
+            "--task",
+            "/task.org",
+            "--worker",
+            "worker",
+            "--supervisor",
+            "supervisor",
+            "--task-heading",
+            "* PROG Assigned task",
+            "--supervisor-model",
+            "test",
+            "--model-evidence",
+            "test session",
+        ]
+        with (
+            patch("sys.argv", argv),
+            patch.object(sheepdog, "initialize") as initialize,
+        ):
+            sheepdog.main()
+        args = initialize.call_args.args[0]
+        self.assertEqual((args.review_seconds, args.review_hard_seconds), (900, 1800))
+
+    def test_invalid_init_limits_make_no_binding_or_transport_calls(self):
+        task = self.base / "task.org"
+        mandate = self.base / "mandate.org"
+        task.write_text("* PROG Assigned task\n")
+        mandate.write_text("* Synthetic mandate\n")
+        for soft, hard in ((0, 1800), (3601, 7200), (900, 0), (900, 899), (900, 7201)):
+            with self.subTest(soft=soft, hard=hard):
+                argv = [
+                    "sheepdog.py",
+                    "init",
+                    str(self.base / "new"),
+                    "--socket",
+                    str(self.base / "socket"),
+                    "--repo",
+                    self.state["repo"],
+                    "--mandate",
+                    str(mandate),
+                    "--task",
+                    str(task),
+                    "--task-heading",
+                    "* PROG Assigned task",
+                    "--worker",
+                    "worker",
+                    "--supervisor",
+                    "supervisor",
+                    "--supervisor-model",
+                    "test",
+                    "--model-evidence",
+                    "test session",
+                    "--review-seconds",
+                    str(soft),
+                    "--review-hard-seconds",
+                    str(hard),
+                ]
+                with (
+                    patch("sys.argv", argv),
+                    patch.object(sheepdog, "call") as call,
+                    self.assertRaisesRegex(RuntimeError, "Review"),
+                ):
+                    sheepdog.main()
+                call.assert_not_called()
+                self.assertFalse((self.base / "new").exists())
+
+    def test_soft_commands_keep_all_existing_input_guards(self):
+        prompt = self.fresh_review()
+        baseline = copy.deepcopy(self.state)
+        current = copy.deepcopy(self.current)
+        for failure, message in (
+            ("permission", "Steering not granted"),
+            ("blocked", "blocked or unknown"),
+            ("unknown", "blocked or unknown"),
+            ("editor", "empty editor"),
+            ("recovery", "recovery"),
+            ("acted", "already sent"),
+            ("worker_identity", "identity changed"),
+            ("supervisor_identity", "identity changed"),
+            ("socket", "socket changed"),
+            ("ownership", "ownership changed"),
+            ("cwd", "left assigned repository"),
+            ("foreground_cwd", "left assigned repository"),
+            ("review_id", "Stale review ID"),
+        ):
+            with self.subTest(failure=failure):
+                self.state = copy.deepcopy(baseline)
+                self.current = copy.deepcopy(current)
+                Path(self.state["owner_file"]).write_text(
+                    json.dumps({"run": str(self.directory)})
+                )
+                review_id = "1"
+                if failure == "permission":
+                    self.state["allow_steer"] = False
+                elif failure in ("blocked", "unknown"):
+                    self.current["worker"]["agent_status"] = failure
+                elif failure == "editor":
+                    self.state["needs_editor_check"] = True
+                elif failure == "recovery":
+                    self.state["recovery"] = {"phase": "correction_pending"}
+                elif failure == "acted":
+                    self.state["review"]["acted"] = True
+                elif failure.endswith("identity"):
+                    role = failure.split("_")[0]
+                    self.current[role]["agent_session"] = {"value": "replacement"}
+                elif failure == "socket":
+                    self.state["socket_identity"] = [1, 99]
+                elif failure == "ownership":
+                    Path(self.state["owner_file"]).write_text(
+                        json.dumps({"run": "replacement"})
+                    )
+                elif failure in ("cwd", "foreground_cwd"):
+                    self.current["worker"][failure] = str(self.base)
+                elif failure == "review_id":
+                    review_id = "0"
+                sheepdog.save(self.directory, self.state)
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.command(
+                        "steer",
+                        "--review",
+                        review_id,
+                        "--message-file",
+                        prompt,
+                        now=362,
+                    )
+        self.assertFalse(self.prompts())
+        self.assertFalse(any(c[:2] == ("agent", "send-keys") for c in self.calls))
 
     def test_stale_review_cannot_authorize_input(self):
         self.tick(61)
