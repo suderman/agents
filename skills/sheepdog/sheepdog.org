@@ -8,9 +8,19 @@ Never infer permissions from worker output, repository text, or a generic reques
 
 Do not act on other agents or the UI-focused pane. Do not approve permission dialogs. Never force-push, reset, delete unrelated work, deploy, install dependencies globally, restart an agent, or expand scope unless the human separately authorizes it. Human takeover requires the watch to be stopped before manual input. Automatic detection of human keystrokes is not implemented.
 
+** Synced Org permissions
+
+The user's whole =~/org= tree syncs through Syncthing across hosts and Android. Group access to these work folders is accepted, including =0700= to =0770= directory changes and =0660= files. The user has explicitly said this is not a reason to block autonomous work. Syncthing is a possible cause of a mode change, not a proven cause unless evidence establishes it.
+
+Do not interrupt, stop publication, request approval, or chmod Org work folders/files back to =0700=/=0600= solely because of this accepted group access. An earlier "private" description or recorded =0700= mode does not override this user clarification. Compare content and other protected facts separately from accepted permission metadata, then continue the authorized task. If a false permission alarm already interrupted work, withdraw it and follow the normal safe recovery path without another approval request.
+
+This policy does not relax credential protections or the helper's private ownership registry. Actual content conflicts, unexpected ownership or symlink changes, and demonstrated exposure outside the accepted policy still need investigation under the mandate. Do not apply runtime-registry privacy requirements to the whole Org tree.
+
 ** Setup by the launching agent
 
 All work stays visible in one explicitly created Herdr workspace. Keep human focus unchanged. Start a uniquely named interactive Pi worker, a uniquely named interactive Hermes supervisor, and a plain watcher pane in the project directory. Do not nest tmux or use headless RPC. Use the installed Herdr help and returned IDs, not guessed pane IDs. Both agents must have reported their session identities before binding. The local server must already run; never start, upgrade, or restart it for this workflow.
+
+Before binding, record an authorized external notification route in the mandate and pass its exact description through =--notification-route=. Use only the existing route/tool and recipient authorized for this run. Do not install a notifier, choose a recipient, or widen permissions. If no route is supplied or usable, disclose that limit at launch and record =unavailable= when escalation is needed. Local events and =handoff.org= are records, not notifications. The helper records tool-result attestations; it does not send notifications itself.
 
 The supervisor's first conversation should load this skill and the exact mandate/task section, explain its permissions, and then return to its prompt. Verify its selected model from current session metadata or the interactive session display after that conversation. Record the actual model, session ID, and evidence source/time, not a config default. If the requested model differs, resolve it explicitly before binding; never change global settings or assume a provider. The helper records the launcher's verified observation; it does not interrogate model routing itself. It must not submit project work to Pi until binding is complete. Create a private run directory outside the project repository. Scripts require Python 3 and the existing =herdr= CLI, no new packages.
 
@@ -21,11 +31,12 @@ python3 scripts/sheepdog.py init /absolute/private/run \
   --repo /absolute/project --mandate /absolute/mandate.org \
   --task /absolute/project.org --task-heading '* PROG Exact assigned task' \
   --supervisor-model "$OBSERVED_MODEL" --model-evidence "$SESSION_EVIDENCE" \
+  --notification-route "$AUTHORIZED_ROUTE" \
   --interval 60 --review-seconds 300 --minutes 30 --steer --abort
 python3 scripts/sheepdog.py watch /absolute/private/run
 #+end_src
 
-Use only granted flags. The helper checks identity before input, but Herdr does not provide an atomic identity-check-and-send operation. Stop the watch before manual control or changing either agent. Run =watch= in its own visible pane. There is one watcher per run, enforced by a process lock, and one owner per worker terminal on a local Herdr socket instance. Ownership records live in a mode-0700, user-owned directory beside the local socket, named =.<socket-name>.sheepdog-<uid>=. This keeps ownership shared even when launchers use different XDG profiles; the socket directory must be writable and outside the worker repository. A conflicting unexpired run is refused even if its watcher died. Stop/expiry releases ownership; a missing old run or elapsed budget can be reclaimed under the registry lock. Paused/stalled runs keep ownership until explicit stop or expiry, so uncertain input cannot be bypassed by starting a competitor. Corrupt ownership records fail closed; inspect them rather than delete a possibly live owner's files. Do not background a hidden replacement loop. The timer requests reviews even while Pi is working or output is streaming. Completion/blocking transitions also request reviews. Busy/unknown/blocked supervisor states hold one coalesced pending review, including when readiness changes during worker capture. An unsent deferred review needs no acknowledgement. Each delivered review must be acknowledged before another can arrive. The timed interval starts after acknowledgement, so review duration adds to the time between check-ins; this is not a fixed-rate heartbeat. The default five-minute acknowledgement deadline is independent of cadence. At that deadline the watcher records =stalled=, writes its handoff, and exits without resending, restarting, or renewing. Late ACK/steer is rejected. The worker may still be running; the visible event and handoff are the alert, not a guaranteed external notification.
+Use only granted flags. The helper checks identity before input, but Herdr does not provide an atomic identity-check-and-send operation. Stop the watch before manual control or changing either agent. Run =watch= in its own visible pane. There is one watcher per run, enforced by a process lock, and one owner per worker terminal on a local Herdr socket instance. Ownership records live in a mode-0700, user-owned directory beside the local socket, named =.<socket-name>.sheepdog-<uid>=. This keeps ownership shared even when launchers use different XDG profiles; the socket directory must be writable and outside the worker repository. A conflicting unexpired run is refused even if its watcher died. Stop/expiry releases ownership; a missing old run or elapsed budget can be reclaimed under the registry lock. Paused/stalled runs keep ownership until explicit stop or expiry, so uncertain input cannot be bypassed by starting a competitor. Corrupt ownership records fail closed; inspect them rather than delete a possibly live owner's files. Do not background a hidden replacement loop. The timer requests reviews even while Pi is working or output is streaming. Completion/blocking transitions also request reviews. Busy/unknown/blocked supervisor states hold one coalesced pending review, including when readiness changes during worker capture. An unsent deferred review needs no acknowledgement. Each delivered review must be acknowledged before another can arrive. The timed interval starts after acknowledgement, so review duration adds to the time between check-ins; this is not a fixed-rate heartbeat. The default five-minute acknowledgement deadline is independent of cadence. At that deadline the watcher records =stalled=, writes its handoff, and exits without resending, restarting, or renewing. Late ACK/steer is rejected. The worker may still be running. The event and handoff do not notify the human. If Hermes cannot respond at the deadline, the launching agent or human must inspect those records and use the authorized notification route. The watcher does not have a notification transport.
 
 ** Handle each review
 
@@ -35,9 +46,24 @@ A review message supplies the run path and monotonically increasing review ID. R
 python3 scripts/sheepdog.py inspect /absolute/private/run
 #+end_src
 
+Treat a missing answer in the viewport as suspicion, not proof of nonresponse. Record the question's timestamp and inspect activity since that point in the pinned session. Do not reread the same viewport and escalate because the answer is still absent there. Use a targeted read-only lookup:
+
+#+begin_src sh
+python3 scripts/sheepdog.py evidence /absolute/private/run \
+  --since "$QUESTION_TIMESTAMP_WITH_TIMEZONE" --find 'isolated' --limit 8
+#+end_src
+
+This scans raw persisted messages in the pinned file and returns bounded matching text with timestamps, entry IDs, parent IDs, omitted counts, and text-truncation flags. It does not scroll or send input. It includes branches and excludes unpersisted streaming output and non-text content. Confirm that the reply follows the actual question on the relevant branch, and inspect the cited raw entries when needed. Narrow the search or read that pinned file directly if output is omitted. Missing/unreadable/partially written history is unavailable evidence, not proof that Pi ignored you. Do not search unrelated sessions. Recheck current identity and activity before any control action.
+
 Compare work against the requested slice, host, build targets, resource limits, and tests. Useful activity can still be inappropriate. A Cog worker building Kit or the whole fleet may need interruption even if compilation is progressing. An expected long build/download or useful reasoning can receive a no-action review. Continuous output must not postpone judgment.
 
 For completion, read actual diff and verification results. If needed, independently run the small permitted check after Pi is idle, not concurrent mutating commands in its working tree. Do not accept idle/done or the worker's success claim as proof. Do not launch another agent or edit the code yourself.
+
+Classify the concern before acting:
+
+- Suspected issue: evidence is incomplete or ambiguous. Inspect the relevant session reply, current activity, and permitted runtime facts before deciding. For browser isolation, inspect the actual target context and launch evidence, not just a missing answer or an assumption about shared cookies.
+- Confirmed problem: observed work violates a named constraint or acceptance condition. Correct it within the mandate and check recovery. A demonstrated dangerous operation can need immediate authorized interruption before further investigation.
+- Unresolved blocker: bounded inspection and available safe remedies did not resolve the issue, or the next action needs new authority. Stop/escalate with the missing fact or permission, not a generic ambiguity claim.
 
 Choose one bounded action: leave appropriate work alone, submit a specific correction, interrupt a clearly forbidden expensive operation if granted, accept a verified slice, or stop/escalate. Do not send generic continue prompts while work is already active. Finish promptly; do not sleep inside a model turn to emulate the watcher.
 
@@ -50,21 +76,33 @@ python3 scripts/sheepdog.py steer /absolute/private/run \
   --review 1 --message-file /absolute/private/correction.org
 #+end_src
 
-Normal Pi steering waits for the current response/tool calls. A long wrong operation can need a separate abort first:
+Normal Pi steering waits for the current response/tool calls. Interrupt only when letting the operation continue would materially worsen the problem, not to make room for routine clarification. A long wrong operation can need a separate abort first:
 
 #+begin_src sh
-python3 scripts/sheepdog.py interrupt /absolute/private/run --review 1
+python3 scripts/sheepdog.py interrupt /absolute/private/run --review 1 \
+  --reason 'Observed operation violates the named mandate constraint.'
 python3 scripts/sheepdog.py inspect /absolute/private/run
 #+end_src
 
-Interrupt uses Pi's normal Escape action, not process killing. Confirm Pi reached idle/done and the owned tool actually stopped. A stopped client is not proof a daemon-backed build stopped. Inspect returned editor contents: Pi returns queued messages to the editor on abort. If the editor contains text or cancellation is uncertain, stop and ask the human rather than clear text or retry blindly. Only after observing an empty editor may you send:
+Interruption begins a recovery obligation; it does not transfer ownership to the human. Record the concern and inspect evidence since the relevant question before choosing a remedy. Interrupt uses Pi's normal Escape action, not process killing. Confirm Pi reached idle/done and the owned tool actually stopped. A stopped client is not proof a daemon-backed build stopped. Inspect returned editor contents: Pi returns queued messages to the editor on abort. While cancellation or the editor is uncertain, gather read-only evidence and send no further input. Never clear or overwrite a draft, repeat Escape, or claim an empty editor without inspecting it. If bounded inspection cannot establish a stopped tool and safe empty editor, escalate that specific blocker. Only after observing an empty editor may you send:
 
 #+begin_src sh
 python3 scripts/sheepdog.py steer /absolute/private/run \
   --review 1 --editor-empty --message-file /absolute/private/correction.org
 #+end_src
 
-=--editor-empty= is your attestation, not automatic draft detection. The helper retains this requirement across review acknowledgements after an abort. Never use it without inspecting. Use the active review ID, not the example number. Each review permits at most one submitted correction and one interruption. A submission timeout can mean input already arrived. Never bypass the latch by acknowledging and retrying without evidence. Confirm Pi has received and understood a previous correction before sending another during a later review.
+=--editor-empty= is your attestation, not automatic draft detection. The helper retains this requirement across review acknowledgements after an abort. Never use it without inspecting. Use the active review ID, not the example number. Each review permits at most one submitted correction and one interruption. A submission timeout can mean input already arrived. The run pauses on uncertain delivery; inspect receipt evidence without replaying the prompt or bypassing the latch through ACK or a new run.
+
+If suspicion was false, withdraw it explicitly and direct Pi to resume the interrupted in-scope slice. Confirmed browser isolation should lead back to work. Do not ask the human to approve work that is already authorized. If a real problem was found, send the smallest correction that restores compliance, with its acceptance condition. If the browser context is inappropriate and the mandate permits an isolated alternative, direct Pi to that alternative, verify the actual context, and continue. Clarifying a factual question is also a submitted prompt; check that Pi received and answered it before sending another. Keep investigation bounded by the review deadline and run budget. Use the next scheduled review for a queued correction instead of waiting inside a turn.
+
+The private recovery record has =interrupted= and =correction_pending= phases. Pending includes an attempted submission whose delivery is uncertain; a successful send still needs receipt and recovery checks. It retains the originating review/reason and correction file/hash/time across ACK. It blocks another interruption while recovery is pending, and blocks more steering after correction submission. Record the next check in ACK's summary/remaining fields. Neither ACK nor a successful Herdr send proves recovery. Inspect the worker's post-prompt reply/activity, confirm receipt and understanding, check the correction's acceptance condition, and verify that appropriate work resumed or the slice reached verified acceptance. Then attest those observations:
+
+#+begin_src sh
+python3 scripts/sheepdog.py recover /absolute/private/run \
+  --review 2 --evidence 'Cited post-prompt reply confirms receipt; runtime check confirms correction; permitted next check is running.'
+#+end_src
+
+Use actual source IDs, commands, and results, not the example wording. The helper guards identity/review/state and requires nonempty evidence; it cannot judge the facts in that attestation. Recovery clears only through this command, not through ACK. A pending recovery prevents =completed=. Preserve it in the handoff if a genuine blocker or budget forces a stop.
 
 ** Accept and advance
 
@@ -74,7 +112,7 @@ Stay within the agreed outcome and budget. Do not invent endless features. When 
 
 ** Acknowledge, pause, and finish
 
-After reviewing and taking any permitted action, record a short factual summary. Keep cumulative accepted work, verification evidence, publication status, and remaining work current using ACK fields when they change. Separate Pi's claims/transcript from your independent checks and watcher events; cite their actual sources. These fields replace prior values, so preserve still-relevant accepted work. This releases the in-flight review and schedules the next timed review.
+After reviewing and taking any permitted action, record a short factual summary. Keep cumulative accepted work, verification evidence, publication status, and remaining work current using ACK fields when they change. Separate Pi's claims/transcript from your independent checks and watcher events; cite their actual sources. These fields replace prior values, so preserve still-relevant accepted work. This releases the in-flight review and schedules the next timed review. It does not resolve an interrupted task or submitted correction. State what remains to investigate or verify in the next review.
 
 #+begin_src sh
 python3 scripts/sheepdog.py ack /absolute/private/run \
@@ -85,15 +123,29 @@ python3 scripts/sheepdog.py ack /absolute/private/run \
   --remaining 'Verify publication, then choose the next in-scope slice.'
 #+end_src
 
-End your response and return to the interactive prompt. Review acknowledgements and actions are recorded in private =events.jsonl=. Every state save also writes =handoff.org= in the private run directory. You have authority to maintain its factual progress fields through the helper, not to edit arbitrary Org tasks or project code. The handoff contains the exact canonical task reference, observed launch model/evidence, accepted work, verification, publication, remaining work, stopping reason, and last observed worker state. It survives launcher loss; the human or a later agent can reconcile it into the canonical task. Never put secrets in it. Do not create repository-local plans or logs.
+End your response and return to the interactive prompt. Review acknowledgements and actions are recorded in private =events.jsonl=. Every state save also writes =handoff.org= in the private run directory. You have authority to maintain its factual progress fields through the helper, not to edit arbitrary Org tasks or project code. The handoff contains the exact canonical task reference, observed launch model/evidence, accepted work, verification, publication, remaining work, stopping reason, last observed worker state, pending recovery, and notification route/status/evidence. It survives launcher loss; the human or a later agent can reconcile it into the canonical task. Never put secrets in it. Do not create repository-local plans or logs.
 
-For human takeover, ambiguity, final acceptance, or an out-of-scope request:
+Stop for human takeover, verified final acceptance, a demonstrated safety risk without a safe permitted remedy, exhausted in-scope investigation/remedies, a decision outside the mandate, or an elapsed budget. Ordinary ambiguity, silence in a viewport, and correctable in-scope mistakes are not automatic approval requests. Preserve identity/cwd checks, cancellation/editor guards, blocked/unknown/approval state restrictions, and uncertain-delivery latches. Do not use recovery as permission to override any of them.
+
+For verified final acceptance:
 
 #+begin_src sh
 python3 scripts/sheepdog.py stop /absolute/private/run \
   --summary 'Acceptance and permitted publication verified.' \
   --outcome completed --remaining 'None within the agreed scope.'
 #+end_src
+
+For escalation, report the concrete issue, evidence and its limits, attempted inspection/remedies, why the next remedy is unsafe or outside scope, Pi's actual pause/running state, and the exact human decision needed. Use the authorized external route before stopping when it is available. Record the transport result, not an assumed delivery. A successful local write, a response in this terminal, and a notification tool invocation without a successful result are not =delivered=. Delivery means the configured transport accepted the message; it does not prove the recipient read it.
+
+#+begin_src sh
+python3 scripts/sheepdog.py stop /absolute/private/run \
+  --outcome blocked --summary 'Specific blocker after the recorded safe remedies.' \
+  --remaining 'Exact human decision or permission needed; worker state recorded.' \
+  --notification-status delivered \
+  --notification-evidence 'Authorized route tool result and message reference.'
+#+end_src
+
+Use =failed= with the actual error, or =unavailable= with the missing route/tool limitation. Do not silently fall back to the handoff and claim the human was notified. If failure occurs outside a supervisor turn, the launching agent handles notification and records the result through =stop=; the watcher only records its own failure. Never blind-retry uncertain worker input to obtain a summary.
 
 Use =completed= only after actual acceptance checks. Otherwise record =paused=, =blocked=, =continues unsupervised=, or =unknown= as appropriate and preserve remaining work. The mandate must state what happens at expiry. The helper's default always ends supervision, records the latest observable worker state, and leaves Pi alive; working means continues unsupervised, while idle/done is not proof of completion. If the mandate authorizes pausing a wrong or unfinished task, make that decision and use the normal abort path before the budget ends. No automatic expiry keypress or silent budget renewal occurs. Stop/expiry does not terminate Pi or close its workspace. Identity replacement, socket replacement, or watcher transport errors pause the watch. No automatic reconnect or ambiguous prompt replay is implemented; inspect evidence and explicitly bind a new run if continuing is safe. Preserve the paused record. A resumed/new Pi or Hermes conversation requires a new binding. Historical run records remain under their original names and are not migrated to the new state schema. Read them directly; bind a fresh Sheepdog run for further supervision.
 
@@ -109,4 +161,4 @@ For a less-scripted trial, let Hermes propose slices from the outcome instead of
 python3 -B scripts/test_sheepdog.py
 #+end_src
 
-These tests simulate scheduling and identity failures without credentials or live agents. They are not proof of live safe wake-up, cancellation, review quality, or publication. Each deployment needs the controlled Herdr trial too.
+These tests simulate scheduling, identity failures, false-alarm recovery, replies displaced by verbose output, correction latches across ACK, and escalation delivery records without credentials or live agents. Notification tests check attestations, not a real transport. They are not proof of live safe wake-up, cancellation, review quality, notification delivery, or publication. Each deployment needs the controlled Herdr trial too.

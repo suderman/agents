@@ -402,6 +402,34 @@ class WatchChecks(unittest.TestCase):
         self.assertEqual(sum("already supervised" in x for x in outcomes), 1)
         self.assertTrue(Path(sheepdog.read_record(owner)["run"]).is_dir())
 
+    def test_org_group_access_drift_does_not_block_reviews(self):
+        org = self.base / "org/work/task"
+        org.mkdir(mode=0o700, parents=True)
+        task = org / "task.org"
+        task.write_text("* PROG Assigned task\n")
+        task.chmod(0o600)
+        self.state["task"] = str(task)
+        self.prepare_action()
+        org.chmod(0o770)
+        task.chmod(0o660)
+        self.next_review()
+        self.assertEqual(self.state["status"], "active")
+        self.assertEqual(self.state["review"]["id"], 2)
+        self.assertEqual(org.stat().st_mode & 0o777, 0o770)
+        self.assertEqual(task.stat().st_mode & 0o777, 0o660)
+        self.assertFalse(any(c[:2] == ("agent", "send-keys") for c in self.calls))
+
+    def test_runtime_ownership_registry_still_requires_private_mode(self):
+        owner = Path(self.state["owner_file"])
+        owner.parent.chmod(0o770)
+        with (
+            self.assertRaisesRegex(RuntimeError, "Ownership directory must be private"),
+            sheepdog.ownership_lock(owner),
+        ):
+            self.fail("Group-accessible runtime registry must not be accepted")
+        self.assertEqual(owner.parent.stat().st_mode & 0o777, 0o770)
+        self.assertFalse(self.prompts())
+
     def test_corrupt_owner_fails_closed(self):
         Path(self.state["owner_file"]).write_text("not json")
         with self.assertRaisesRegex(RuntimeError, "Cannot read Sheepdog record"):
@@ -473,12 +501,18 @@ class WatchChecks(unittest.TestCase):
         self.assertIn("Follow sheepdog", message)
         self.assertIn(self.state["task"], message)
         self.assertIn(self.state["task_heading"], message)
+        self.assertIn("ACK does not resolve recovery", message)
 
     def test_launch_records_observed_model_task_and_unique_worker(self):
-        task = self.base / "task.org"
+        org = self.base / "org/work"
+        org.mkdir(parents=True)
+        org.chmod(0o770)
+        task = org / "task.org"
         task.write_text("* PROG Assigned task\n")
-        mandate = self.base / "mandate.org"
+        task.chmod(0o660)
+        mandate = org / "mandate.org"
         mandate.write_text("* Assigned permissions\n")
+        mandate.chmod(0o660)
         socket = self.base / "socket"
         socket.touch()
         args = argparse.Namespace(
@@ -490,6 +524,7 @@ class WatchChecks(unittest.TestCase):
             task_heading="* PROG Assigned task",
             supervisor_model="observed-model",
             model_evidence="Current session metadata, session-test, at launch",
+            notification_route="",
             review_seconds=300,
             interval=60,
             minutes=30,
@@ -506,10 +541,17 @@ class WatchChecks(unittest.TestCase):
             patch.object(sheepdog, "call", side_effect=self.fake_call),
             patch.object(sheepdog.time, "time", return_value=100),
         ):
-            sheepdog.initialize(args)
+            with patch("builtins.print") as printed:
+                sheepdog.initialize(args)
             bound = sheepdog.read_record(args.run / "state.json")
             self.assertEqual(bound["supervisor_model"], "observed-model")
             self.assertEqual(bound["task"], str(task))
+            self.assertIsNone(bound["recovery"])
+            self.assertEqual(bound["notification"]["route"], "")
+            self.assertEqual(bound["notification"]["status"], "not attempted")
+            self.assertIn(
+                "No authorized notification route supplied", printed.call_args.args[0]
+            )
             args.run = self.base / "competitor"
             with (
                 patch.dict(
@@ -552,6 +594,311 @@ class WatchChecks(unittest.TestCase):
             self.assertIn(value, text)
         self.assertFalse(Path(self.state["owner_file"]).exists())
         self.assertFalse(self.prompts())
+
+    def reload_state(self):
+        self.state = sheepdog.read_record(self.directory / "state.json")
+
+    def next_review(self):
+        self.command(
+            "ack", "--review", str(self.state["counter"]), "--summary", "Follow up"
+        )
+        self.reload_state()
+        self.tick(161)
+        sheepdog.save(self.directory, self.state)
+
+    def test_false_alarm_evidence_restores_interrupted_task(self):
+        session = self.base / "worker.jsonl"
+        entries = [
+            {
+                "type": "message",
+                "id": "question",
+                "parentId": None,
+                "timestamp": "2026-10-01T19:59:00Z",
+                "message": {"role": "user", "content": "Is browser isolated?"},
+            },
+            {
+                "type": "message",
+                "id": "reply",
+                "parentId": "question",
+                "timestamp": "2026-10-01T20:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Isolation confirmed in disposable context.",
+                        }
+                    ],
+                },
+            },
+        ]
+        session.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n")
+        self.current["worker"]["agent_session"] = {
+            "kind": "path",
+            "value": str(session),
+        }
+        self.state["worker"]["identity"] = sheepdog.identity(self.current["worker"])
+        prompt = self.prepare_action()
+        self.command(
+            "interrupt", "--review", "1", "--reason", "Potential shared browser context"
+        )
+        evidence = sheepdog.session_evidence(
+            self.state, "2026-10-01T19:59:00Z", "Isolation confirmed", 8
+        )
+        reply = evidence["entries"][0]
+        self.assertEqual(reply["parentId"], "question")
+        Path(prompt).write_text(
+            "* Withdraw false alarm and resume audio validation\n\n" + reply["text"]
+        )
+        self.current["worker"]["agent_status"] = "idle"
+        self.command(
+            "steer", "--review", "1", "--editor-empty", "--message-file", prompt
+        )
+        self.reload_state()
+        self.assertEqual(self.state["recovery"]["phase"], "correction_pending")
+        self.current["worker"]["agent_status"] = "working"
+        self.command(
+            "recover",
+            "--review",
+            "1",
+            "--evidence",
+            "Session reply confirms isolated context; resume prompt received; audio check started.",
+        )
+        self.reload_state()
+        self.assertIsNone(self.state["recovery"])
+        self.assertEqual(self.state["status"], "active")
+        self.assertEqual(len(self.prompts()), 1)
+        self.assertIn(reply["text"], self.prompts()[0][-1])
+
+    def test_real_correction_persists_across_ack_without_duplicates(self):
+        prompt = self.prepare_action()
+        Path(prompt).write_text(
+            "* Correct browser target\n\nUse the mandate-approved isolated context. Confirm the context, then resume audio checks.\n"
+        )
+        self.command(
+            "interrupt",
+            "--review",
+            "1",
+            "--reason",
+            "Confirmed inappropriate browser context; isolated alternative authorized",
+        )
+        self.reload_state()
+        self.next_review()
+        with self.assertRaisesRegex(RuntimeError, "recovery"):
+            self.command("interrupt", "--review", "2")
+        self.current["worker"]["agent_status"] = "idle"
+        self.command(
+            "steer", "--review", "2", "--editor-empty", "--message-file", prompt
+        )
+        self.reload_state()
+        self.next_review()
+        with self.assertRaisesRegex(RuntimeError, "recovery"):
+            self.command("steer", "--review", "3", "--message-file", prompt)
+        with self.assertRaisesRegex(RuntimeError, "recovery"):
+            self.command("stop", "--outcome", "completed")
+        self.assertIn(
+            "correction_pending", (self.directory / "handoff.org").read_text()
+        )
+        self.current["worker"]["agent_status"] = "working"
+        self.command(
+            "recover",
+            "--review",
+            "3",
+            "--evidence",
+            "Worker received isolated-context correction; target now isolated; next allowed test running.",
+        )
+        self.reload_state()
+        self.assertIsNone(self.state["recovery"])
+        self.assertEqual(sum(c[:2] == ("agent", "send-keys") for c in self.calls), 1)
+        self.assertEqual(sum(c[2] == "worker" for c in self.prompts()), 1)
+
+    def test_verbose_output_does_not_hide_pinned_session_reply(self):
+        session = self.base / "worker.jsonl"
+        entries = [{"type": "session", "version": 3}]
+        for index, text in enumerate(
+            ["Is browser isolated?", "Isolation confirmed in disposable context."]
+            + ["verbose output" * 1000] * 100
+        ):
+            entries.append(
+                {
+                    "type": "message",
+                    "id": str(index),
+                    "parentId": str(index - 1),
+                    "timestamp": "2026-10-01T20:00:00Z",
+                    "message": {
+                        "role": "assistant" if index == 1 else "toolResult",
+                        "content": [{"type": "text", "text": text}],
+                    },
+                }
+            )
+        session.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+        self.current["worker"]["agent_session"] = {
+            "kind": "path",
+            "value": str(session),
+        }
+        self.state["worker"]["identity"] = sheepdog.identity(self.current["worker"])
+        self.prepare_action()
+        result = sheepdog.session_evidence(
+            self.state, "2026-10-01T19:59:00Z", "Isolation confirmed", 8
+        )
+        self.assertEqual(result["matched"], 1)
+        self.assertEqual(result["entries"][0]["id"], "1")
+        self.assertIn("disposable context", result["entries"][0]["text"])
+        with patch.object(sheepdog, "call", side_effect=self.fake_call):
+            self.assertNotIn("Isolation confirmed", sheepdog.output(self.state))
+        session.unlink()
+        with self.assertRaises(OSError):
+            sheepdog.session_evidence(
+                self.state, "2026-10-01T19:59:00Z", "isolation", 8
+            )
+        self.assertFalse(self.prompts())
+
+    def test_evidence_is_bounded_and_fails_on_incomplete_history(self):
+        session = self.base / "worker.jsonl"
+        entries = [
+            {
+                "type": "message",
+                "id": str(index),
+                "timestamp": "2026-10-01T20:00:00Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "check " * 1000}],
+                },
+            }
+            for index in range(12)
+        ]
+        session.write_text("\n".join(json.dumps(entry) for entry in entries) + "\n")
+        self.current["worker"]["agent_session"] = {
+            "kind": "path",
+            "value": str(session),
+        }
+        self.state["worker"]["identity"] = sheepdog.identity(self.current["worker"])
+        self.prepare_action()
+        with patch("builtins.print") as printed:
+            self.command("evidence", "--since", "2026-10-01T19:59:00Z", "--limit", "2")
+        result = json.loads(printed.call_args.args[0])
+        self.assertEqual(result["matched"], 12)
+        self.assertEqual(result["omitted"], 10)
+        self.assertEqual(len(result["entries"]), 2)
+        self.assertTrue(result["entries"][0]["text_truncated"])
+        self.assertEqual(result["entries"][0]["id"], "10")
+        self.assertFalse(any(c[:2] == ("agent", "read") for c in self.calls))
+        self.assertEqual(
+            sheepdog.session_evidence(self.state, "2026-10-01T20:01:00Z", "", 2)[
+                "matched"
+            ],
+            0,
+        )
+        with session.open("a") as source:
+            source.write('{"type":')
+        with self.assertRaisesRegex(RuntimeError, "not proof of nonresponse"):
+            self.command("evidence", "--since", "2026-10-01T19:59:00Z")
+        self.assertFalse(self.prompts())
+
+    def test_recovery_needs_safe_state_and_evidence(self):
+        prompt = self.prepare_action()
+        self.command("interrupt", "--review", "1")
+        with self.assertRaisesRegex(RuntimeError, "awaiting recovery"):
+            self.command(
+                "recover", "--review", "1", "--evidence", "Still investigating"
+            )
+        self.current["worker"]["agent_status"] = "idle"
+        self.command(
+            "steer", "--review", "1", "--editor-empty", "--message-file", prompt
+        )
+        with self.assertRaisesRegex(RuntimeError, "with evidence"):
+            self.command("recover", "--review", "1", "--evidence", " ")
+        self.current["worker"]["agent_status"] = "blocked"
+        with self.assertRaisesRegex(RuntimeError, "with evidence"):
+            self.command(
+                "recover", "--review", "1", "--evidence", "No safe recovery yet"
+            )
+        self.reload_state()
+        self.assertIsNotNone(self.state["recovery"])
+
+    def test_uncertain_correction_cannot_be_recovered_or_replayed(self):
+        prompt = self.prepare_action()
+        original = self.fake_call
+        attempts = []
+
+        def uncertain(run, *args):
+            if args[:3] == ("agent", "prompt", "worker"):
+                attempts.append(args)
+                raise subprocess.TimeoutExpired("herdr", 15)
+            return original(run, *args)
+
+        with (
+            patch.object(self, "fake_call", side_effect=uncertain),
+            self.assertRaises(subprocess.TimeoutExpired),
+        ):
+            self.command("steer", "--review", "1", "--message-file", prompt)
+        self.reload_state()
+        self.assertEqual(self.state["status"], "paused")
+        self.assertEqual(self.state["recovery"]["phase"], "correction_pending")
+        with self.assertRaisesRegex(RuntimeError, "No active review"):
+            self.command(
+                "recover", "--review", "1", "--evidence", "No receipt evidence"
+            )
+        with self.assertRaisesRegex(RuntimeError, "No active review"):
+            self.command("steer", "--review", "1", "--message-file", prompt)
+        self.assertEqual(len(attempts), 1)
+        self.assertTrue(Path(self.state["owner_file"]).exists())
+
+    def test_notification_without_route_is_not_delivery(self):
+        self.prepare_action()
+        with self.assertRaisesRegex(RuntimeError, "authorized notification route"):
+            self.command(
+                "stop",
+                "--notification-status",
+                "delivered",
+                "--notification-evidence",
+                "Local handoff written",
+            )
+        self.command(
+            "stop",
+            "--outcome",
+            "blocked",
+            "--notification-status",
+            "unavailable",
+            "--notification-evidence",
+            "No authorized external route supplied; handoff only.",
+        )
+        self.reload_state()
+        self.assertEqual(self.state["notification"]["status"], "unavailable")
+        self.assertEqual(self.state["status"], "stopped")
+
+    def test_out_of_scope_escalation_keeps_notification_result(self):
+        self.state["notification"] = {
+            "route": "Explicitly authorized test route",
+            "status": "not attempted",
+        }
+        for status in ("delivered", "failed", "unavailable"):
+            with self.subTest(status=status):
+                self.prepare_action()
+                self.command(
+                    "stop",
+                    "--summary",
+                    "Need permission to replace browser service; no in-scope remedy remains.",
+                    "--outcome",
+                    "blocked",
+                    "--remaining",
+                    "Authorize service replacement or choose another check.",
+                    "--notification-status",
+                    status,
+                    "--notification-evidence",
+                    "Authorized route tool result: " + status,
+                )
+                self.reload_state()
+                self.assertEqual(self.state["notification"]["status"], status)
+                self.assertIn(status, (self.directory / "handoff.org").read_text())
+                self.assertFalse(self.prompts())
+                self.state["status"] = "active"
+                self.state["review"] = None
+                self.state["pending"] = True
+                Path(self.state["owner_file"]).write_text(
+                    json.dumps({"run": str(self.directory)})
+                )
+                self.state["counter"] = 0
 
     def test_stale_review_cannot_authorize_input(self):
         self.tick(61)
