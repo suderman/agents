@@ -22,6 +22,7 @@
     "npm:pi-lens",
     "npm:@pi-vault/pi-dcp",
     "npm:@ff-labs/pi-fff",
-    "npm:@pi-unipi/notify"
+    "npm:@pi-unipi/notify",
+    "npm:@narumitw/pi-goal"
   ]
 }
