@@ -1,3 +1,11 @@
 {
-  "skills": []
+  "skills": [
+    {
+      "path": ".pi/skills/impeccable",
+      "ref": "main",
+      "name": "impeccable",
+      "git": "https://github.com/pbakaus/impeccable.git",
+      "revision": "508d7e8955de3b3caf2d8676e85206723d41a887"
+    }
+  ]
 }

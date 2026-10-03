@@ -34,15 +34,33 @@ Shared skills live in =~/.agents/skills/= and =~/.agents/vendor/skills/=. Pi use
 
 ** Selected third-party skills
 
-Edit =skills.json= to select Git-hosted skills. The initial manifest is empty. Each entry selects one directory; repeat =git= to select several skills from one repository. This example is illustrative, not an installed dependency:
+Use =lib/skills= from any working directory. Adding or removing a skill updates =skills.json=, =skills.lock=, and the generated tree together, after fetch and layout checks succeed. Other selected skills stay at their locked commits. No upstream installers or build scripts run.
+
+#+begin_src sh
+# Show selected skills, refs, exact commits, and source paths without fetching:
+~/.agents/lib/skills list
+
+# Add one skill. The name must match its SKILL.md frontmatter:
+~/.agents/lib/skills add pdf https://github.com/anthropics/skills.git --path skills/pdf --ref main
+
+# Remove a selected vendor skill, leaving maintained skills alone:
+~/.agents/lib/skills remove pdf
+
+# Show command-specific options:
+~/.agents/lib/skills add --help
+#+end_src
+
+=--path= defaults to =.= and =--ref= defaults to =HEAD=. Duplicate names, maintained-skill collisions, invalid layouts, and failed fetches leave the manifest, lock, and generated tree unchanged. Add/remove require the existing manifest and lock to agree. They rebuild the remaining selected tree, so they need network access when it contains remote skills.
+
+You can still edit =skills.json= by hand and run =lib/skills update=. Each entry selects one directory; repeat =git= to select several skills from one repository. The current selection is:
 
 #+begin_src json
 {
   "skills": [
     {
-      "name": "pdf",
-      "git": "https://github.com/anthropics/skills.git",
-      "path": "skills/pdf",
+      "name": "impeccable",
+      "git": "https://github.com/pbakaus/impeccable.git",
+      "path": ".pi/skills/impeccable",
       "ref": "main"
     }
   ]
@@ -57,7 +75,7 @@ Edit =skills.json= to select Git-hosted skills. The initial manifest is empty. E
 # Fresh checkout or rebuild from the existing lock, without advancing revisions:
 ~/.agents/lib/skills materialize
 
-# After editing the manifest, or to advance selected upstream refs:
+# After editing the manifest, or to advance ALL selected upstream refs:
 ~/.agents/lib/skills update
 
 # Check declarations, lock agreement, layout, and maintained/vendor collisions:
@@ -71,6 +89,22 @@ Each selected directory must contain =SKILL.md= with name and description frontm
 Bootstraps check the shared skill declarations and tree without fetching or updating. Run materialization before bootstrap when the manifest is nonempty. Pi packages in =harnesses/pi/settings.json= remain Pi packages.
 
 Run =python3 -B tests/test_skills.py= for local Git fixture tests. The bootstrap fixtures also need =jq= and Mike Farah's =yq= v4.
+
+*** Impeccable
+
+[[https://impeccable.style][Impeccable]] is installed at =vendor/skills/impeccable/= from the upstream Pi distribution. The shared =prompts/impeccable.md= adds =/impeccable= in Pi and OpenCode. Run their bootstraps after a fresh checkout to install the prompt. Run =/reload= in Pi or start a new OpenCode session after installing or updating it.
+
+#+begin_src text
+/impeccable                    Show the context-aware command menu
+/impeccable init               Capture this project's product context
+/impeccable document           Describe its existing design system
+/impeccable audit src/app      Review a specific interface
+/impeccable polish src/app     Refine a specific interface
+#+end_src
+
+Pi also supports =/skill:impeccable audit src/app= without the prompt alias. Hermes discovers the same shared skill but does not use shared slash-command prompts. Relative references and helper scripts resolve from the installed skill directory, while the working directory stays at the target project.
+
+The upstream launcher may download its versioned engine on first use into =~/.impeccable/=. It checks the release's SHA256 sidecar, but =skills.lock= pins the Git skill only, not the downloaded engine's checksum. No engine has been provisioned or tested on NixOS here. An existing engine can be selected with =IMPECCABLE_BIN=. If the helper fails, follow the skill's documented fallback and read existing =PRODUCT.md= and =DESIGN.md= directly. Project hooks remain opt-in. Do not use the upstream installer or updater to replace the repo-managed skill; use =lib/skills update= and reload instead.
 
 ** Shared prompts
 

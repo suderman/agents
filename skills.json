@@ -1,3 +1,10 @@
 {
-  "skills": []
+  "skills": [
+    {
+      "path": ".pi/skills/impeccable",
+      "ref": "main",
+      "name": "impeccable",
+      "git": "https://github.com/pbakaus/impeccable.git"
+    }
+  ]
 }

@@ -42,7 +42,7 @@ for harness in pi opencode; do
   printf '%s\n' '---' 'description: Echo supplied text' '---' 'Review $ARGUMENTS' >"$fixture/repo/prompts/arguments.md"
 
   "$fixture/repo/harnesses/$harness/bootstrap"
-  for name in commit commitall arguments; do
+  for name in commit commitall arguments impeccable; do
     cmp "$fixture/repo/prompts/$name.md" "$runtime/$directory/$name.md"
     [[ ! -L "$runtime/$directory/$name.md" && -w "$runtime/$directory/$name.md" ]]
   done
@@ -110,7 +110,7 @@ for harness in pi opencode; do
   printf '%s shared prompt checks passed: install, specific prompts, preservation, repeat runs, preflight.\n' "$harness"
 done
 
-for name in commit commitall; do
+for name in commit commitall impeccable; do
   [[ -f "$repo/prompts/$name.md" ]]
   [[ ! -e "$repo/harnesses/pi/prompts/$name.md" && ! -e "$repo/harnesses/opencode/commands/$name.md" ]]
 done
