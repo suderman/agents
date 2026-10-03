@@ -65,9 +65,9 @@ class SkillsTests(unittest.TestCase):
     def select(self, *entries):
         self.write_json("skills.json", {"skills": list(entries)})
 
-    def run_command(self, command, error=None):
+    def run_command(self, command, error=None, arguments=()):
         result = subprocess.run(
-            [str(self.root / "lib/skills"), command],
+            [str(self.root / "lib/skills"), command, *arguments],
             capture_output=True,
             text=True,
             check=False,
@@ -151,6 +151,139 @@ class SkillsTests(unittest.TestCase):
         self.select(beta)
         self.run_command("update")
         self.assertFalse((self.root / "vendor/skills/alpha").exists())
+
+    def test_add_and_remove_keep_other_revisions_locked(self):
+        self.run_command("update")
+        with (self.upstream / "collection/alpha/SKILL.md").open("a") as output:
+            output.write("New upstream revision.\n")
+        second = self.commit()
+        self.run_command(
+            "add",
+            arguments=(
+                "beta",
+                str(self.upstream),
+                "--path",
+                "collection/beta",
+                "--ref",
+                "main",
+            ),
+        )
+        self.assertEqual(
+            [entry["revision"] for entry in self.lock()], [self.first, second]
+        )
+        self.assertEqual(self.lock()[1]["ref"], "main")
+        self.assertNotIn(
+            "New upstream", (self.root / "vendor/skills/alpha/SKILL.md").read_text()
+        )
+        (self.upstream / "collection/beta/extra").write_text("later revision\n")
+        self.commit()
+        self.run_command("remove", arguments=("alpha",))
+        self.assertEqual(self.lock()[0]["revision"], second)
+        self.assertEqual(self.lock()[0]["name"], "beta")
+        self.assertFalse((self.root / "vendor/skills/alpha").exists())
+        self.assertFalse((self.root / "vendor/skills/beta/extra").exists())
+        self.run_command("check")
+        self.run_command("remove", arguments=("beta",))
+        self.assertEqual(self.lock(), [])
+        self.assertEqual(self.snapshot(), {})
+        self.run_command("check")
+
+    def test_add_root_skill_defaults(self):
+        self.select()
+        self.add_skill(self.upstream, "root-skill")
+        shutil.rmtree(self.upstream / "collection")
+        revision = self.commit()
+        self.run_command("add", arguments=("root-skill", str(self.upstream)))
+        self.assertEqual(self.lock()[0]["path"], ".")
+        self.assertEqual(self.lock()[0]["ref"], "HEAD")
+        self.assertEqual(self.lock()[0]["revision"], revision)
+        self.run_command("check")
+
+    def test_selection_failures_preserve_source_files_and_tree(self):
+        self.run_command("update")
+        self.add_skill(self.root / "skills/beta", "beta")
+        before = self.snapshot()
+        sources = [
+            (self.root / name).read_bytes() for name in ["skills.json", "skills.lock"]
+        ]
+        cases = [
+            ("add", ("alpha", str(self.upstream)), "duplicate skill name"),
+            (
+                "add",
+                ("beta", str(self.upstream), "--path", "collection/beta"),
+                "skill name collision",
+            ),
+            (
+                "add",
+                ("missing", str(self.upstream), "--path", "missing"),
+                "Git archive",
+            ),
+            (
+                "add",
+                ("wrong-name", str(self.upstream), "--path", "collection/beta"),
+                "name must match",
+            ),
+            ("add", ("invalid--name", str(self.upstream)), "invalid skill name"),
+            ("add", ("missing", str(self.work / "missing")), "Git fetch"),
+            (
+                "add",
+                ("missing", str(self.upstream), "--path", "../escape"),
+                "path must stay within",
+            ),
+            ("remove", ("unknown",), "skill not selected"),
+        ]
+        for command, arguments, error in cases:
+            with self.subTest(command=command, arguments=arguments):
+                self.run_command(command, error, arguments)
+                self.assertEqual(self.snapshot(), before)
+                self.assertEqual(
+                    [
+                        (self.root / name).read_bytes()
+                        for name in ["skills.json", "skills.lock"]
+                    ],
+                    sources,
+                )
+        self.assertEqual(list((self.root / ".scratch").iterdir()), [])
+
+    def test_remove_fetch_failure_preserves_selection(self):
+        beta = {**self.entry, "name": "beta", "path": "collection/beta"}
+        self.select(self.entry, beta)
+        self.run_command("update")
+        before = self.snapshot()
+        sources = [
+            (self.root / name).read_bytes() for name in ["skills.json", "skills.lock"]
+        ]
+        shutil.rmtree(self.upstream)
+        self.run_command("remove", "Git fetch", ("alpha",))
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(
+            [
+                (self.root / name).read_bytes()
+                for name in ["skills.json", "skills.lock"]
+            ],
+            sources,
+        )
+
+    def test_list_is_read_only_without_fetch_or_vendor_tree(self):
+        self.run_command("update")
+        sources = [
+            (self.root / name).read_bytes() for name in ["skills.json", "skills.lock"]
+        ]
+        shutil.rmtree(self.upstream)
+        shutil.rmtree(self.root / "vendor")
+        result = self.run_command("list")
+        self.assertIn(
+            f"alpha\tHEAD\t{self.first}\t{self.upstream}\tcollection/alpha",
+            result.stdout,
+        )
+        self.assertFalse((self.root / "vendor").exists())
+        self.assertEqual(
+            [
+                (self.root / name).read_bytes()
+                for name in ["skills.json", "skills.lock"]
+            ],
+            sources,
+        )
 
     def test_rebuild_discards_invalid_vendor_edits(self):
         self.run_command("update")

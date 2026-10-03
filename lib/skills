@@ -27,12 +27,16 @@ def unique_keys(pairs):
 
 def declarations(path, locked=False):
     data = json.loads(path.read_text(), object_pairs_hook=unique_keys)
+    return parse_declarations(data, path.name, locked)
+
+
+def parse_declarations(data, filename, locked=False):
     if (
         not isinstance(data, dict)
         or set(data) != {"skills"}
         or not isinstance(data["skills"], list)
     ):
-        raise ValueError(f"{path.name}: expected an object containing a skills array")
+        raise ValueError(f"{filename}: expected an object containing a skills array")
     entries = []
     names = set()
     allowed = {"name", "git", "path", "ref"} | ({"revision"} if locked else set())
@@ -43,12 +47,12 @@ def declarations(path, locked=False):
             or not {"name", "git"} <= set(entry)
         ):
             raise ValueError(
-                f"{path.name}: each skill needs name and git; optional path and ref"
+                f"{filename}: each skill needs name and git; optional path and ref"
             )
         if any(
             not isinstance(value, str) or not value.strip() for value in entry.values()
         ):
-            raise ValueError(f"{path.name}: skill fields must be nonempty strings")
+            raise ValueError(f"{filename}: skill fields must be nonempty strings")
         entry = {"path": ".", "ref": "HEAD", **entry}
         name = entry["name"]
         if not NAME.fullmatch(name) or len(name) > 64:
@@ -176,7 +180,7 @@ def validate_skill(directory, name):
         )
 
 
-def realize(entries, update):
+def realize(entries, update, select=False):
     scratch = ROOT / ".scratch"
     scratch.mkdir(mode=0o700, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="skills-", dir=scratch) as temporary:
@@ -185,7 +189,8 @@ def realize(entries, update):
         staged.mkdir()
         fetched = {}
         for entry in entries:
-            ref = entry["ref"] if update else entry["revision"]
+            # Add/remove carry existing revisions so unrelated skills never advance.
+            ref = entry.get("revision", entry["ref"]) if update else entry["revision"]
             key = (entry["git"], ref)
             if key not in fetched:
                 repository = work / f"git-{len(fetched)}"
@@ -197,13 +202,23 @@ def realize(entries, update):
                 revision = git(repository, "rev-parse", "FETCH_HEAD^{commit}")
                 fetched[key] = (repository, revision)
             repository, revision = fetched[key]
-            if not update and revision != entry["revision"]:
+            if "revision" in entry and revision != entry["revision"]:
                 raise ValueError(
                     f"{entry['name']}: fetched revision does not match lock"
                 )
             entry["revision"] = revision
             copy_skill(repository, entry, staged / entry["name"])
-        # All fetches and layout checks finish before replacing the generated tree or lock.
+        if update:
+            lock = work / "skills.lock"
+            lock.write_text(json.dumps({"skills": entries}, indent=2) + "\n")
+        if select:
+            manifest = work / "skills.json"
+            selected = [
+                {key: value for key, value in entry.items() if key != "revision"}
+                for entry in entries
+            ]
+            manifest.write_text(json.dumps({"skills": selected}, indent=2) + "\n")
+        # All fetches and layout checks finish before replacing the tree or source files.
         vendor = ROOT / "vendor"
         vendor.mkdir(exist_ok=True)
         target = vendor / "skills"
@@ -215,18 +230,63 @@ def realize(entries, update):
             target.rename(work / "previous")
         staged.rename(target)
         if update:
-            lock = work / "skills.lock"
-            lock.write_text(json.dumps({"skills": entries}, indent=2) + "\n")
             lock.replace(ROOT / "skills.lock")
+        if select:
+            manifest.replace(ROOT / "skills.json")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["materialize", "update", "check"])
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("materialize", help="rebuild vendor skills at locked commits")
+    commands.add_parser(
+        "update", help="advance all selected upstream refs and lock them"
+    )
+    commands.add_parser(
+        "check", help="validate declarations and installed skill layout"
+    )
+    commands.add_parser(
+        "list", help="show selected third-party skills and locked commits"
+    )
+    add = commands.add_parser("add", help="select and install one Git skill")
+    add.add_argument("name", help="name from the upstream SKILL.md frontmatter")
+    add.add_argument("git", help="Git URL or absolute local repository path")
+    add.add_argument(
+        "--path", default=".", help="skill directory within the Git repository"
+    )
+    add.add_argument("--ref", default="HEAD", help="upstream branch, tag, or commit")
+    remove = commands.add_parser("remove", help="deselect and remove one vendor skill")
+    remove.add_argument("name")
     args = parser.parse_args()
     try:
         manifest = declarations(ROOT / "skills.json")
         entries = manifest if args.command == "update" else locked_entries(manifest)
+        if args.command == "list":
+            print("NAME\tREF\tREVISION\tGIT\tPATH")
+            for entry in entries:
+                print(
+                    "\t".join(
+                        entry[key] for key in ["name", "ref", "revision", "git", "path"]
+                    )
+                )
+            return
+        if args.command == "add":
+            candidate = {
+                key: getattr(args, key) for key in ["name", "git", "path", "ref"]
+            }
+            selected = parse_declarations(
+                {"skills": [*manifest, candidate]}, "skills.json"
+            )
+            entries = [
+                next(
+                    (entry for entry in entries if entry["name"] == item["name"]), item
+                )
+                for item in selected
+            ]
+        elif args.command == "remove":
+            if args.name not in {entry["name"] for entry in entries}:
+                raise ValueError(f"skill not selected: {args.name}")
+            entries = [entry for entry in entries if entry["name"] != args.name]
         collisions(entries, existing=args.command == "check")
         if args.command == "check":
             expected = {entry["name"] for entry in entries}
@@ -238,10 +298,12 @@ def main():
             for entry in entries:
                 validate_skill(ROOT / "vendor/skills" / entry["name"], entry["name"])
         else:
-            realize(entries, update=args.command == "update")
+            update = args.command in {"update", "add", "remove"}
+            realize(entries, update=update, select=args.command in {"add", "remove"})
             print(
                 f"Materialized {len(entries)} vendor skill(s)"
-                + ("; updated skills.lock" if args.command == "update" else "")
+                + ("; updated skills.lock" if update else "")
+                + (" and skills.json" if args.command in {"add", "remove"} else "")
             )
     except (OSError, ValueError, tarfile.TarError) as error:
         parser.exit(1, f"skills: {error}\n")
