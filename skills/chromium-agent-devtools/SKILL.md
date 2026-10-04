@@ -18,43 +18,34 @@ chromium-agent
 
 Do not launch raw `chromium`, `google-chrome`, Playwright, Puppeteer, or a fresh browser profile unless user explicitly asks or DevTools/CDP cannot do the job.
 
-Load `browser-control-basics` first. Its endpoint-selection rules also apply
-when these tools are missing and direct CDP is used.
+Load `browser-control-basics` first. Agents share the browser on CDP port 9222;
+Herdr workspace identity does not affect browser selection. Agent windows open
+on Hyprland workspace 8.
 
 ## Startup check
 
-Resolve the browser for the current context:
+Check the shared browser:
 
 ```sh
-if [ -n "${HERDR_WORKSPACE_ID:-}" ] && command -v herdr-hypr >/dev/null; then
-  endpoint=$(herdr-hypr cdp --start) || exit 1
-else
-  endpoint=http://127.0.0.1:9222
-fi
+endpoint=http://127.0.0.1:9222
 curl -fsS --max-time 2 "$endpoint/json/version"
 ```
 
-Inside the pairing trial, each Herdr workspace has its own class, profile, and
-dynamic CDP port. The helper starts only the caller's browser when needed.
-Never use another workspace's port file or fall back to global 9222 after an
-owned-endpoint failure. `chromium-agent --help` does not launch a browser.
+If absent, start `chromium-agent` in the background and repeat the check. The
+wrapper restarts the shared agent browser, so reuse a working endpoint instead
+of launching again. `chromium-agent --help` does not launch a browser.
 
-Pi uses `herdr-hypr devtools --no-usage-statistics` in the trial. This launcher
-starts or reuses the owned browser before connecting MCP. Outside Herdr it keeps
-the global 9222 endpoint. If tools are unavailable, reconnect through `/mcp` or
-use direct CDP against the resolved `$endpoint`. Reconnect after moving an
-existing Pi pane to a different Herdr workspace.
-
-On hosts without the trial, retain the global browser on 9222. If it is absent,
-start `chromium-agent` in the background and repeat the endpoint check.
+Pi's MCP configuration uses `--browser-url=http://127.0.0.1:9222`. If tools are
+unavailable, reconnect through `/mcp` or use direct CDP against the same endpoint.
+Do not select a personal browser or an old trial profile.
 
 ## Control path order
 
-1. Resolve the current context's endpoint before selecting a control path.
+1. Check the shared agent endpoint before selecting a control path.
 2. Prefer Pi's native `mcp__chrome_devtools__*` tools; discover them with `searchTools`.
 3. If MCP is disconnected, reconnect/list its tools after the startup check.
-4. If MCP still fails, direct CDP against the resolved endpoint is allowed.
-5. If endpoint resolution fails, report that failure. Do not control a different browser.
+4. If MCP still fails, direct CDP against the shared endpoint is allowed.
+5. If the agent browser cannot start or expose CDP, report that failure. Do not control a different browser.
 
 ## Minimum proof of browser control
 

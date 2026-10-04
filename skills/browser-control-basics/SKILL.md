@@ -23,9 +23,9 @@ chromium-agent
 Do not launch raw `chromium`, `google-chrome`, or a fresh browser profile for
 agent-controlled browser work unless explicitly instructed.
 
-Prefer the existing browser owned by the caller's context over launching a
-separate browser stack. A running browser in another Herdr workspace is not
-this context's browser.
+Prefer the existing running Chromium-agent browser over launching a separate
+browser stack. Agents share one browser and CDP endpoint, regardless of Herdr
+workspace. Agent windows open on Hyprland workspace 8.
 
 ## Environment note
 
@@ -36,32 +36,20 @@ Treat MCP availability and browser controllability as separate concerns.
 
 ## Startup check
 
-Resolve the caller's endpoint before using MCP or direct CDP:
+Check the shared agent endpoint before using MCP or direct CDP:
 
 ```sh
-if [ -n "${HERDR_WORKSPACE_ID:-}" ] && command -v herdr-hypr >/dev/null; then
-  endpoint=$(herdr-hypr cdp --start) || exit 1
-else
-  endpoint=http://127.0.0.1:9222
-fi
+endpoint=http://127.0.0.1:9222
 curl -fsS --max-time 2 "$endpoint/json/version"
 ```
 
-Inside the Herdr/Hyprland trial, `cdp --start` reuses or starts only the current
-workspace's isolated browser and waits for its endpoint. `herdr-hypr cdp` checks
-without starting it. A failed lookup is a failure, not permission to use another
-browser. Never read another workspace's `DevToolsActivePort`, scan ports for a
-reachable browser, or fall back to 9222 in this mode. Do not fake Herdr identity.
+If absent, launch `chromium-agent` in the background, then repeat the endpoint
+check. This wrapper restarts the shared agent browser, so do not run it when
+the endpoint is already working. `chromium-agent --help` does not start a browser.
 
-Outside the trial, keep the existing global agent browser on 9222. If absent,
-launch `chromium-agent` in the background, then repeat the endpoint check.
-`chromium-agent --help` does not start a browser.
-
-Pi's trial MCP launcher is `herdr-hypr devtools`; it resolves and starts the same
-owned browser. If MCP tools are missing, reconnect through `/mcp` after resolving
-the endpoint. A session whose pane moved to another Herdr workspace must reconnect
-before using existing browser tools. Direct CDP fallback must use the resolved
-`$endpoint`, never a port discovered from another profile.
+Pi's chrome-devtools MCP uses `--browser-url=http://127.0.0.1:9222`. If tools are
+missing, reconnect through `/mcp`. Direct CDP fallback uses the same endpoint,
+not a personal browser or an old trial profile's port.
 
 ## Allowed control paths
 
