@@ -18,43 +18,43 @@ chromium-agent
 
 Do not launch raw `chromium`, `google-chrome`, Playwright, Puppeteer, or a fresh browser profile unless user explicitly asks or DevTools/CDP cannot do the job.
 
-This setup expects Chrome DevTools Protocol on:
-
-```text
-http://127.0.0.1:9222
-```
-
-Pi MCP config should point `chrome-devtools` at that URL, e.g. `--browser-url=http://127.0.0.1:9222`.
+Load `browser-control-basics` first. Its endpoint-selection rules also apply
+when these tools are missing and direct CDP is used.
 
 ## Startup check
 
-Before blaming MCP, check whether `chromium-agent` is running and exposing CDP:
+Resolve the browser for the current context:
 
 ```sh
-pgrep -af 'chromium.*remote-debugging|chromium-agent'
-curl -sS --max-time 2 http://127.0.0.1:9222/json/version
+if [ -n "${HERDR_WORKSPACE_ID:-}" ] && command -v herdr-hypr >/dev/null; then
+  endpoint=$(herdr-hypr cdp --start) || exit 1
+else
+  endpoint=http://127.0.0.1:9222
+fi
+curl -fsS --max-time 2 "$endpoint/json/version"
 ```
 
-If no target is reachable, start it:
+Inside the pairing trial, each Herdr workspace has its own class, profile, and
+dynamic CDP port. The helper starts only the caller's browser when needed.
+Never use another workspace's port file or fall back to global 9222 after an
+owned-endpoint failure. `chromium-agent --help` does not launch a browser.
 
-```sh
-chromium-agent
-```
+Pi uses `herdr-hypr devtools --no-usage-statistics` in the trial. This launcher
+starts or reuses the owned browser before connecting MCP. Outside Herdr it keeps
+the global 9222 endpoint. If tools are unavailable, reconnect through `/mcp` or
+use direct CDP against the resolved `$endpoint`. Reconnect after moving an
+existing Pi pane to a different Herdr workspace.
 
-If the command would tie up the current shell, start it in the background:
-
-```sh
-nohup chromium-agent >/tmp/chromium-agent.log 2>&1 &
-```
-
-Then re-run the `curl` check.
+On hosts without the trial, retain the global browser on 9222. If it is absent,
+start `chromium-agent` in the background and repeat the endpoint check.
 
 ## Control path order
 
-1. Prefer Pi's direct `chrome_devtools_*` tools when available.
-2. If direct tools are unavailable, use MCP gateway for the `chrome-devtools` server.
-3. If MCP is disconnected, verify CDP with the startup check before changing MCP config.
-4. If CDP works but MCP fails, reconnect/list MCP server tools before trying another browser stack.
+1. Resolve the current context's endpoint before selecting a control path.
+2. Prefer Pi's native `mcp__chrome_devtools__*` tools; discover them with `searchTools`.
+3. If MCP is disconnected, reconnect/list its tools after the startup check.
+4. If MCP still fails, direct CDP against the resolved endpoint is allowed.
+5. If endpoint resolution fails, report that failure. Do not control a different browser.
 
 ## Minimum proof of browser control
 
@@ -68,8 +68,7 @@ A running process or visible window is not enough. Prove control with one real b
 
 When reporting browser work, state which path was used:
 
-- `chrome_devtools_*` direct tools
-- `chrome-devtools` MCP through gateway
+- native `chrome-devtools` MCP tools
 - direct CDP fallback
 - no browser control available
 
