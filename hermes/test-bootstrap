@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -euo pipefail
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+export HOME="$fixture/home"
+mkdir -p "$HOME/profile/prompts"
+for name in commit commitall; do
+  printf '%s\n' '---' 'description: Fixture command' '---' 'Review changes.' >"$HOME/profile/prompts/$name.md"
+done
+export HERMES_HOME="$fixture/runtime"
+mkdir -p "$HERMES_HOME/skills/local" "$HERMES_HOME/cron"
+printf 'secret\n' > "$HERMES_HOME/.env"
+chmod 600 "$HERMES_HOME/.env"
+printf 'state\n' > "$HERMES_HOME/state.db"
+printf 'jobs\n' > "$HERMES_HOME/cron/jobs.json"
+printf 'skill\n' > "$HERMES_HOME/skills/local/SKILL.md"
+ln -s "$source_dir/config.yaml" "$HERMES_HOME/config.yaml"
+cp "$source_dir/SOUL.md" "$HERMES_HOME/SOUL.md"
+chmod a-w "$HERMES_HOME/SOUL.md"
+"$source_dir/bootstrap"
+for file in config.yaml SOUL.md; do
+  [[ -f "$HERMES_HOME/$file" && ! -L "$HERMES_HOME/$file" && -w "$HERMES_HOME/$file" ]]
+  cmp "$source_dir/$file" "$HERMES_HOME/$file"
+done
+find "$HERMES_HOME" -type f -exec sha256sum {} + | sort > "$fixture/before"
+stat -c '%n %i %Y %a' "$HERMES_HOME"/* "$HERMES_HOME/.env" > "$fixture/metadata"
+"$source_dir/bootstrap"
+find "$HERMES_HOME" -type f -exec sha256sum {} + | sort > "$fixture/after"
+cmp "$fixture/before" "$fixture/after"
+stat -c '%n %i %Y %a' "$HERMES_HOME"/* "$HERMES_HOME/.env" | cmp "$fixture/metadata" -
+[[ $(<"$HERMES_HOME/.env") == secret ]]
+[[ $(<"$HERMES_HOME/state.db") == state ]]
+[[ $(<"$HERMES_HOME/cron/jobs.json") == jobs ]]
+[[ $(<"$HERMES_HOME/skills/local/SKILL.md") == skill ]]
+# Runtime-only settings must survive at every managed nesting level.
+printf '%s\n' \
+  '# Keep my runtime settings' \
+  'model:' \
+  '  default: old-model' \
+  '  provider: old-provider' \
+  '  api_mode: chat_completions' \
+  '  temperature: 0.7 # Keep this comment' \
+  'providers:' \
+  '  codex-lb:' \
+  '    api_mode: chat_completions' \
+  '    context_length: 131072' \
+  '  local:' \
+  '    base_url: http://localhost:8080/v1' \
+  'agent:' \
+  '  reasoning_effort: low' \
+  '  max_turns: 42' \
+  'browser:' \
+  '  cloud_provider: old-provider' \
+  '  command_timeout: 75' \
+  '  camofox:' \
+  '    managed_persistence: false' \
+  '    rewrite_loopback_urls: false' \
+  'skills:' \
+  '  external_dirs: [~/other-skills]' \
+  '  create_dir: ~/local-skills' \
+  'mcp_servers:' \
+  '  local:' \
+  '    command: local-mcp' \
+  '    args: [--quiet, --local]' \
+  'custom:' \
+  '  enabled: false' \
+  '  empty: null' > "$fixture/runtime.yaml"
+chmod 600 "$fixture/runtime.yaml"
+cp "$fixture/runtime.yaml" "$fixture/runtime-before.yaml"
+ln -sf "$fixture/runtime.yaml" "$HERMES_HOME/config.yaml"
+"$source_dir/bootstrap"
+[[ ! -L "$HERMES_HOME/config.yaml" ]]
+cmp "$fixture/runtime-before.yaml" "$fixture/runtime.yaml"
+# Named provider selects Responses even when legacy model fields survive.
+yq --exit-status '
+  .model.default == "gpt-6-luna" and
+  .model.provider == "custom:codex-lb" and
+  .providers.codex-lb.base_url == "https://codex-lb.kit/v1" and
+  .providers.codex-lb.key_env == "CODEX_LB_API_KEY" and
+  .providers.codex-lb.api_mode == "codex_responses" and
+  .providers.codex-lb.context_length == 131072 and
+  .providers.local.base_url == "http://localhost:8080/v1" and
+  .model.api_mode == "chat_completions" and
+  .model.temperature == 0.7 and
+  .agent.reasoning_effort == "high" and
+  .agent.max_turns == 42 and
+  .browser.cloud_provider == "camofox" and
+  .browser.command_timeout == 75 and
+  .browser.camofox.managed_persistence == true and
+  .browser.camofox.rewrite_loopback_urls == false and
+  (.skills.external_dirs | length) == 2 and
+  .skills.external_dirs[0] == "~/.agents/skills" and
+  .skills.external_dirs[1] == "~/profile/skills" and
+  .skills.create_dir == "~/local-skills" and
+  .mcp_servers.local.command == "local-mcp" and
+  (.mcp_servers.local.args | length) == 2 and
+  .mcp_servers.local.args[0] == "--quiet" and
+  .mcp_servers.local.args[1] == "--local" and
+  .custom.enabled == false and (.custom | has("empty"))
+' "$HERMES_HOME/config.yaml" >/dev/null
+grep -q 'Keep my runtime settings' "$HERMES_HOME/config.yaml"
+grep -q 'Keep this comment' "$HERMES_HOME/config.yaml"
+[[ $(stat -c '%a' "$HERMES_HOME/config.yaml") == 600 ]]
+cp "$HERMES_HOME/config.yaml" "$fixture/merged.yaml"
+stat -c '%i %Y %a' "$HERMES_HOME/config.yaml" > "$fixture/merged-metadata"
+"$source_dir/bootstrap"
+cmp "$fixture/merged.yaml" "$HERMES_HOME/config.yaml"
+stat -c '%i %Y %a' "$HERMES_HOME/config.yaml" | cmp "$fixture/merged-metadata" -
+
+# A fresh home needs no existing YAML.
+HERMES_HOME="$fixture/fresh" "$source_dir/bootstrap"
+yq --exit-status '.model.default == "gpt-6-luna"' "$fixture/fresh/config.yaml" >/dev/null
+
+# Invalid, non-mapping, and multi-document YAML must not be overwritten.
+for invalid in 'model: [' '[one, two]' '42' $'{}\n---\n{}'; do
+  printf '%s\n' "$invalid" > "$HERMES_HOME/config.yaml"
+  cp "$HERMES_HOME/config.yaml" "$fixture/invalid.yaml"
+  if "$source_dir/bootstrap" 2>/dev/null; then
+    echo 'Invalid runtime YAML accepted' >&2
+    exit 1
+  fi
+  cmp "$fixture/invalid.yaml" "$HERMES_HOME/config.yaml"
+  [[ -z $(find "$HERMES_HOME" -name '*.tmp.*' -print) ]]
+done
+
+if HERMES_HOME="$HOME" "$source_dir/bootstrap" 2>/dev/null; then
+  echo 'Unsafe destination accepted' >&2
+  exit 1
+fi
+printf 'Hermes bootstrap checks passed\n'

@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+fixture="$(mktemp -d)"
+trap 'rm -rf -- "$fixture"' EXIT
+export HOME="$fixture/home"
+mkdir -p "$HOME/profile/prompts"
+for name in commit commitall; do
+  printf '%s\n' '---' 'description: Fixture command' '---' 'Review changes.' >"$HOME/profile/prompts/$name.md"
+done
+export OPENCODE_CONFIG_DIR="$fixture/config"
+export XDG_STATE_HOME="$fixture/state"
+runtime="$OPENCODE_CONFIG_DIR"
+mkdir -p "$runtime/"{agents,commands,themes,skills/local,.git}
+printf 'secret\n' >"$runtime/.env"
+chmod 600 "$runtime/.env"
+printf 'state\n' >"$runtime/runtime-state"
+printf 'local agent\n' >"$runtime/agents/local.md"
+printf 'local command\n' >"$runtime/commands/local.md"
+printf 'local theme\n' >"$runtime/themes/local.json"
+printf 'legacy skill\n' >"$runtime/skills/local/SKILL.md"
+printf 'legacy git\n' >"$runtime/.git/config"
+ln -s "$source_dir/opencode.json" "$runtime/opencode.json"
+printf '{"stale":true}\n' >"$runtime/tui.json"
+chmod a-w "$runtime/tui.json"
+
+unrelated() {
+  sha256sum "$runtime/"{.env,runtime-state,agents/local.md,commands/local.md,themes/local.json,skills/local/SKILL.md,.git/config}
+  stat -c '%n:%i:%Y:%a' "$runtime/"{.env,runtime-state,agents/local.md,commands/local.md,themes/local.json,skills/local/SKILL.md,.git/config}
+}
+before="$(unrelated)"
+"$source_dir/bootstrap"
+for file in AGENTS.md dcp.jsonc notification-ntfy.json opencode.json tui.json agents/luna.md themes/custom.json; do
+  cmp "$source_dir/$file" "$runtime/$file"
+  [[ ! -L "$runtime/$file" && -w "$runtime/$file" ]]
+done
+jq -e '.skills.paths == ["~/.agents/skills", "~/profile/skills"]' "$runtime/opencode.json" >/dev/null
+[[ -d "$runtime/skills" && -d "$runtime/.git" ]]
+[[ $(<"$runtime/skills/local/SKILL.md") == 'legacy skill' ]]
+[[ $(<"$runtime/.git/config") == 'legacy git' ]]
+[[ "$(unrelated)" == "$before" ]]
+find "$runtime" -type f -exec sha256sum {} + | sort >"$fixture/content"
+find "$runtime" -type f -exec stat -c '%n:%i:%Y:%a' {} + | sort >"$fixture/metadata"
+"$source_dir/bootstrap"
+find "$runtime" -type f -exec sha256sum {} + | sort | cmp "$fixture/content" -
+find "$runtime" -type f -exec stat -c '%n:%i:%Y:%a' {} + | sort | cmp "$fixture/metadata" -
+[[ "$(unrelated)" == "$before" ]]
+
+# Preserve both destination overrides and the XDG fallback.
+OPENCODE_CONFIG_DIR='' OPENCODE_DIR="$fixture/override" "$source_dir/bootstrap"
+cmp "$source_dir/opencode.json" "$fixture/override/opencode.json"
+OPENCODE_CONFIG_DIR='' OPENCODE_DIR='' XDG_CONFIG_HOME="$fixture/xdg" "$source_dir/bootstrap"
+cmp "$source_dir/opencode.json" "$fixture/xdg/opencode/opencode.json"
+if OPENCODE_CONFIG_DIR="$HOME" "$source_dir/bootstrap" 2>/dev/null; then
+  echo 'Unsafe OpenCode destination accepted' >&2
+  exit 1
+fi
+printf 'OpenCode bootstrap checks passed: discovery, writable copies, state, native skills/Git metadata, overrides, repeat runs.\n'

@@ -5,6 +5,18 @@
       "ref": "main",
       "name": "impeccable",
       "git": "https://github.com/pbakaus/impeccable.git"
+    },
+    {
+      "path": "skills/systematic-debugging",
+      "ref": "main",
+      "name": "systematic-debugging",
+      "git": "https://github.com/obra/superpowers.git"
+    },
+    {
+      "path": "skills/web-design-guidelines",
+      "ref": "main",
+      "name": "web-design-guidelines",
+      "git": "https://github.com/vercel-labs/agent-skills.git"
     }
   ]
 }

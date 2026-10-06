@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Resolve selected Git skills without changing maintained skills or runtime homes."""
+"""Resolve selected community Git skills without changing personal or harness content."""
 
 import argparse
+import hashlib
 import io
 import json
 import re
@@ -83,7 +84,7 @@ def locked_entries(manifest):
         for entry in locked
     ] != manifest:
         raise ValueError(
-            "skills.lock does not match skills.json; run lib/skills update"
+            "skills.lock does not match skills.json; run agents skill update"
         )
     return locked
 
@@ -101,23 +102,55 @@ def skill_name(path):
     return match[1]
 
 
-def collisions(entries, existing=False):
-    # Check directory names and declared names, including maintained symlink skills.
-    local = ROOT / "skills"
-    maintained = {path.name for path in local.glob("*")}
-    for path in set(local.rglob("SKILL.md")) | set(local.glob("*/SKILL.md")):
-        maintained.add(skill_name(path))
-    vendor = {entry["name"] for entry in entries}
-    # Rebuilds replace the old generated tree. Only preflight needs to inspect it.
-    if existing:
-        vendor.update(path.name for path in (ROOT / "vendor/skills").glob("*"))
-        for path in (ROOT / "vendor/skills").glob("*/SKILL.md"):
-            vendor.add(skill_name(path))
-    overlap = maintained & vendor
+def personal_skills():
+    directory = Path.home() / "profile/skills"
+    if not directory.exists() and not directory.is_symlink():
+        return {}
+    if not directory.is_dir():
+        raise ValueError(f"personal skills root is not a directory: {directory}")
+    skills = {}
+    for path in sorted(directory.iterdir()):
+        if not NAME.fullmatch(path.name) or len(path.name) > 64 or not path.is_dir():
+            raise ValueError(f"invalid personal skill directory: {path}")
+        validate_skill(path.resolve(), path.name)
+        skills[path.name] = path
+    return skills
+
+
+def collisions(entries):
+    overlap = set(personal_skills()) & {entry["name"] for entry in entries}
     if overlap:
         raise ValueError(
-            f"maintained/vendor skill name collision: {', '.join(sorted(overlap))}"
+            f"community/personal skill name collision: {', '.join(sorted(overlap))}"
         )
+
+
+def tree_state(directory):
+    result = {}
+    for path in sorted(directory.rglob("*")):
+        if path == directory / ".state.json":
+            continue
+        if path.is_symlink() or not (path.is_file() or path.is_dir()):
+            raise ValueError(f"generated skills contain a symlink or special file: {path}")
+        result[str(path.relative_to(directory))] = (
+            [hashlib.sha256(path.read_bytes()).hexdigest(), path.stat().st_mode & 0o777]
+            if path.is_file() else ["directory"]
+        )
+    return result
+
+
+def check_tree(entries):
+    target = ROOT / "skills"
+    if target.is_symlink() or not target.is_dir():
+        raise ValueError("skills must be a generated directory; run agents apply")
+    expected = {entry["name"] for entry in entries} | {".state.json"}
+    if expected != {path.name for path in target.iterdir()}:
+        raise ValueError("skills does not match the lock; run agents apply")
+    for entry in entries:
+        validate_skill(target / entry["name"], entry["name"])
+    state = json.loads((target / ".state.json").read_text())
+    if state != {"skills": entries, "tree": tree_state(target)}:
+        raise ValueError("materialized skills differ from locked state; run agents apply")
 
 
 def git(directory, *arguments, binary=False):
@@ -181,7 +214,11 @@ def validate_skill(directory, name):
 
 
 def realize(entries, update, select=False):
+    target = ROOT / "skills"
     scratch = ROOT / ".scratch"
+    for path in [target, scratch]:
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise ValueError(f"{path.name} must be a generated directory, not a symlink or file")
     scratch.mkdir(mode=0o700, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="skills-", dir=scratch) as temporary:
         work = Path(temporary)
@@ -218,14 +255,10 @@ def realize(entries, update, select=False):
                 for entry in entries
             ]
             manifest.write_text(json.dumps({"skills": selected}, indent=2) + "\n")
+        (staged / ".state.json").write_text(
+            json.dumps({"skills": entries, "tree": tree_state(staged)}, indent=2) + "\n"
+        )
         # All fetches and layout checks finish before replacing the tree or source files.
-        vendor = ROOT / "vendor"
-        vendor.mkdir(exist_ok=True)
-        target = vendor / "skills"
-        if target.is_symlink():
-            raise ValueError(
-                "vendor/skills must be a generated directory, not a symlink"
-            )
         if target.exists():
             target.rename(work / "previous")
         staged.rename(target)
@@ -238,7 +271,7 @@ def realize(entries, update, select=False):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("materialize", help="rebuild vendor skills at locked commits")
+    commands.add_parser("materialize", help="rebuild community skills at locked commits")
     commands.add_parser(
         "update", help="advance all selected upstream refs and lock them"
     )
@@ -255,7 +288,7 @@ def main():
         "--path", default=".", help="skill directory within the Git repository"
     )
     add.add_argument("--ref", default="HEAD", help="upstream branch, tag, or commit")
-    remove = commands.add_parser("remove", help="deselect and remove one vendor skill")
+    remove = commands.add_parser("remove", help="deselect and remove one community skill")
     remove.add_argument("name")
     args = parser.parse_args()
     try:
@@ -287,21 +320,14 @@ def main():
             if args.name not in {entry["name"] for entry in entries}:
                 raise ValueError(f"skill not selected: {args.name}")
             entries = [entry for entry in entries if entry["name"] != args.name]
-        collisions(entries, existing=args.command == "check")
+        collisions(entries)
         if args.command == "check":
-            expected = {entry["name"] for entry in entries}
-            actual = {path.name for path in (ROOT / "vendor/skills").glob("*")}
-            if expected != actual:
-                raise ValueError(
-                    "vendor/skills does not match the lock; run lib/skills materialize"
-                )
-            for entry in entries:
-                validate_skill(ROOT / "vendor/skills" / entry["name"], entry["name"])
+            check_tree(entries)
         else:
             update = args.command in {"update", "add", "remove"}
             realize(entries, update=update, select=args.command in {"add", "remove"})
             print(
-                f"Materialized {len(entries)} vendor skill(s)"
+                f"Materialized {len(entries)} community skill(s)"
                 + ("; updated skills.lock" if update else "")
                 + (" and skills.json" if args.command in {"add", "remove"} else "")
             )

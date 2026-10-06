@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Deploy instructions and managed skill links without replacing Claude-owned state."""
+
+import hashlib
+import json
+import os
+import re
+import sys
+import tempfile
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from deploy import ROOT, destinations, run
+
+SOURCE = ROOT / "claude"
+
+
+def write_copy(target, content, mode=0o644):
+    if (not target.is_symlink() and target.is_file() and target.read_bytes() == content
+            and target.stat().st_mode & 0o777 == mode):
+        return
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=target.name + ".tmp.", dir=target.parent)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(content)
+        os.chmod(temporary, mode)
+        os.replace(temporary, target)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def plan(destination):
+    resolved = destination.resolve()
+    if (resolved in {Path("/"), Path.home().resolve()} or
+            resolved.is_relative_to(ROOT) or resolved.is_relative_to((Path.home() / "profile").resolve())):
+        raise ValueError(f"unsafe Claude destination: {destination}")
+    for relative in ["skills", "commands"]:
+        if (destination / relative).is_symlink():
+            raise ValueError(f"Claude {relative} root must not be a symlink")
+    for relative in ["settings.json", ".agents-managed.json"]:
+        path = destination / relative
+        if path.exists() and not isinstance(json.loads(path.read_text()), dict):
+            raise ValueError(f"Claude {relative} must be a JSON object")
+    run("bash", "-c", 'source "$1"; validate_shared_prompts "$2" "$3"', "bash",
+        str(ROOT / "lib/shared-prompts.sh"), str(Path.home() / "profile/prompts"), str(SOURCE / "commands"))
+    # This adapter needs entry names to plan native collisions before materialization.
+    # The agents CLI validates manifest/lock agreement; this bootstrap does not.
+    selected = {entry["name"]: str(ROOT / "skills" / entry["name"])
+                for entry in json.loads((ROOT / "skills.json").read_text())["skills"]}
+    for path in sorted((Path.home() / "profile/skills").glob("*/SKILL.md")):
+        if path.parent.name in selected:
+            raise ValueError(f"Claude shared skill collision: {path.parent.name}")
+        selected[path.parent.name] = str(path.parent)
+    for name in selected:
+        if Path(name).name != name or name in {".", "..", "synced", "anthropic-skills"}:
+            raise ValueError(f"Claude invalid or reserved skill name: {name}")
+    commands = {}
+    for root in [Path.home() / "profile/prompts", SOURCE / "commands"]:
+        for path in sorted(root.glob("*.md")):
+            body = path.read_text()
+            if root != SOURCE / "commands":
+                # Preserve user-invoked prompt semantics in Claude's command adapter.
+                body = body.replace("\n---\n", "\ndisable-model-invocation: true\n---\n", 1)
+            commands[path.name] = body.encode()
+    record = destination / ".agents-managed.json"
+    previous = json.loads(record.read_text()) if record.exists() else {"skills": {}, "commands": {}}
+    if set(previous) != {"skills", "commands"} or any(not isinstance(v, dict) for v in previous.values()):
+        raise ValueError("invalid Claude managed-entry record")
+    for group, old in previous.items():
+        for name, value in old.items():
+            if Path(name).name != name or name in {".", ".."} or not isinstance(value, str):
+                raise ValueError("unsafe Claude managed-entry record")
+            target = destination / group / name
+            if not target.exists() and not target.is_symlink():
+                continue
+            unchanged = (target.is_symlink() and os.readlink(target) == value if group == "skills" else
+                         not target.is_symlink() and target.is_file() and digest(target) == value)
+            if not unchanged:
+                raise ValueError(f"Claude managed entry changed locally; preserve and resolve before apply: {target}")
+    for group, desired in [("skills", selected), ("commands", commands)]:
+        for name in desired:
+            target = destination / group / name
+            if (target.exists() or target.is_symlink()) and name not in previous[group]:
+                raise ValueError(f"Claude native/{group} collision: {target}")
+    # A native skill can declare a name different from its folder name.
+    native_root = destination / "skills"
+    for path in set(native_root.rglob("SKILL.md")) | set(native_root.glob("*/SKILL.md")):
+        if path.relative_to(destination / "skills").parts[0] in previous["skills"]:
+            continue
+        match = re.search(r"^name:\s*['\"]?([a-z0-9-]+)['\"]?\s*$", path.read_text(), re.MULTILINE)
+        name = match[1] if match else path.parent.name
+        if name in selected or name in {Path(n).stem for n in commands}:
+            raise ValueError(f"Claude native skill name collision: {name} at {path}")
+    state = {"skills": selected, "commands": {n: hashlib.sha256(b).hexdigest() for n, b in commands.items()}}
+    return selected, commands, previous, state
+
+
+def main():
+    destination = destinations()["claude"]
+    try:
+        selected, commands, previous, state = plan(destination)
+        if sys.argv[1:] == ["--check"]:
+            return
+        for name, source in selected.items():
+            if not (Path(source) / "SKILL.md").is_file():
+                raise ValueError(f"Claude skill source missing: {name}; run agents apply")
+        if sys.argv[1:] == ["--verify"]:
+            if json.loads((destination / ".agents-managed.json").read_text()) != state:
+                raise ValueError("Claude managed-entry record differs from deployment")
+            instructions = destination / "CLAUDE.md"
+            if (instructions.is_symlink() or instructions.read_bytes() != (SOURCE / "CLAUDE.md").read_bytes()
+                    or instructions.stat().st_mode & 0o777 != 0o644):
+                raise ValueError("Claude instructions differ from source or are not writable")
+            for name, source in selected.items():
+                target = destination / "skills" / name
+                if not target.is_symlink() or os.readlink(target) != source:
+                    raise ValueError(f"Claude skill link differs: {name}")
+            for name, content in commands.items():
+                if (destination / "commands" / name).read_bytes() != content:
+                    raise ValueError(f"Claude prompt differs: {name}")
+            return
+        if sys.argv[1:]:
+            raise ValueError("use bootstrap [--check|--verify]")
+        for group, desired in [("skills", selected), ("commands", commands)]:
+            (destination / group).mkdir(parents=True, exist_ok=True)
+            for name in previous[group].keys() - desired.keys():
+                target = destination / group / name
+                if target.exists() or target.is_symlink():
+                    target.unlink()
+        for name, source in selected.items():
+            target = destination / "skills" / name
+            if target.is_symlink() and os.readlink(target) == source:
+                continue
+            if target.is_symlink():
+                target.unlink()
+            target.symlink_to(source)
+        for name, content in commands.items():
+            write_copy(destination / "commands" / name, content)
+        write_copy(destination / "CLAUDE.md", (SOURCE / "CLAUDE.md").read_bytes())
+        write_copy(destination / ".agents-managed.json", (json.dumps(state, indent=2) + "\n").encode())
+    except (OSError, ValueError) as error:
+        sys.exit(f"claude bootstrap: {error}")
+
+
+if __name__ == "__main__":
+    main()

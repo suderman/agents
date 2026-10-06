@@ -1,0 +1,18 @@
+model:
+  default: gpt-6-luna
+  provider: custom:codex-lb
+providers:
+  codex-lb:
+    base_url: https://codex-lb.kit/v1
+    key_env: CODEX_LB_API_KEY
+    api_mode: codex_responses
+agent:
+  reasoning_effort: high
+browser:
+  cloud_provider: camofox
+  camofox:
+    managed_persistence: true
+skills:
+  external_dirs:
+    - ~/.agents/skills
+    - ~/profile/skills

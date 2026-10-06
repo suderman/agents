@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+repo_root="$(cd -- "$source_dir/.." && pwd -P)"
+runtime_dir="${OPENCODE_CONFIG_DIR:-${OPENCODE_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/opencode}}"
+
+# shellcheck source=../lib/runtime.sh
+source "$source_dir/../lib/runtime.sh"
+validate_runtime_destination "$runtime_dir" "$source_dir/.." agents commands themes
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --check ) ]]; then
+  echo "Use bootstrap [--check]" >&2
+  exit 1
+fi
+copy_file() {
+  local source="$1"
+  local target="$2"
+  local temporary
+
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$source" "$target"; then
+    return
+  fi
+
+  mkdir -p -- "$(dirname -- "$target")"
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' RETURN
+  cp --dereference --preserve=mode -- "$source" "$temporary"
+  chmod u+rw -- "$temporary"
+  mv -fT -- "$temporary" "$target"
+  trap - RETURN
+}
+
+copy_declared_entries() {
+  local relative="$1"
+  local source target temporary
+
+  mkdir -p -- "$runtime_dir/$relative"
+  shopt -s nullglob dotglob
+  for source in "$source_dir/$relative"/*; do
+    target="$runtime_dir/$relative/${source##*/}"
+    if [[ -d "$source" ]]; then
+      if [[ -L "$target" ]]; then
+        temporary="$(mktemp -d "${target}.tmp.XXXXXX")"
+        [[ -d "$target" ]] && cp -aL -- "$target"/. "$temporary"/
+        rm -- "$target"
+        mv -T -- "$temporary" "$target"
+      fi
+      mkdir -p -- "$target"
+      cp -a -- "$source"/. "$target"/
+    else
+      copy_file "$source" "$target"
+    fi
+  done
+  shopt -u nullglob dotglob
+}
+
+# shellcheck source=../lib/shared-prompts.sh
+source "$repo_root/lib/shared-prompts.sh"
+validate_shared_prompts "$HOME/profile/prompts" "$source_dir/commands"
+jq -e 'type == "object"' "$source_dir/opencode.json" >/dev/null
+[[ "${1:-}" != --check ]] || exit 0
+
+mkdir -p -- "$runtime_dir"
+
+for file in AGENTS.md dcp.jsonc notification-ntfy.json opencode.json tui.json; do
+  copy_file "$source_dir/$file" "$runtime_dir/$file"
+done
+
+for directory in agents commands themes; do
+  copy_declared_entries "$directory"
+done
+copy_shared_prompts "$HOME/profile/prompts" "$runtime_dir/commands"

@@ -37,19 +37,26 @@ jobs:
       - name: Check and build packages
         run: |
           nix flake check --all-systems
-          lib/skills materialize
-          harnesses/pi/test-bootstrap
-          harnesses/opencode/test-bootstrap
+          fixture="$(mktemp -d)"
+          trap 'rm -rf -- "$fixture"' EXIT
+          HOME="$fixture" lib/skills materialize
+          pi/test-bootstrap
+          opencode/test-bootstrap
           nix shell nixpkgs#yq-go --command python3 -B tests/test_skills.py
+          nix shell nixpkgs#yq-go --command python3 -B tests/test_agents.py
           tests/test-prompts
           tests/test-update-flake-lock
-          python3 -B skills/sheepdog/scripts/test_sheepdog.py
-          nix shell nixpkgs#yq-go --command harnesses/hermes/test-bootstrap
-          nix build .#pi .#opencode .#hermes-agent --no-link
-          nix run .#pi -- --version
-          harnesses/pi/test-codemode "$(nix eval --raw .#pi.outPath)"
-          nix run .#opencode -- --version
-          nix run .#hermes-agent -- --version
+          nix shell nixpkgs#yq-go --command hermes/test-bootstrap
+          nix build .#pi .#opencode .#hermes-agent .#claude-code --no-link
+          env -i PATH="$PATH" HOME="$fixture/pi" \
+            "$(nix eval --raw .#pi.outPath)/bin/pi" --version
+          HOME="$fixture/pi" pi/test-codemode "$(nix eval --raw .#pi.outPath)"
+          env -i PATH="$PATH" HOME="$fixture/opencode" \
+            "$(nix eval --raw .#opencode.outPath)/bin/opencode" --version
+          env -i PATH="$PATH" HOME="$fixture/hermes" \
+            "$(nix eval --raw .#hermes-agent.outPath)/bin/hermes" --help
+          env -i PATH="$PATH" HOME="$fixture/claude" \
+            "$(nix eval --raw .#claude-code.outPath)/bin/claude" --version
 
       - name: Commit and push if flake.lock changed
         run: |

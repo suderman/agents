@@ -1,0 +1,28 @@
+{
+  "defaultProvider": "codex-lb",
+  "defaultModel": "gpt-6.1-sol",
+  "defaultThinkingLevel": "high",
+  "enabledModels": [
+    "codex-lb/gpt-6.1-sol:high",
+    "codex-lb/gpt-6-sol:high",
+    "codex-lb/gpt-6-luna:high",
+    "codex-lb/gpt-5.6-sol:high",
+    "codex-lb/gpt-5.6-terra:medium",
+    "codex-lb/gpt-6-astra:high"
+  ],
+  "transport": "sse",
+  "defaultTools": ["+codemode"],
+  "theme": "stylix",
+  "tuiMode": "fullscreen",
+  "hideThinkingBlock": true,
+  "skills": ["~/.agents/skills", "~/profile/skills"],
+  "packages": [
+    "npm:@juicesharp/rpiv-btw",
+    "npm:pi-web-access",
+    "npm:pi-lens",
+    "npm:@pi-vault/pi-dcp",
+    "npm:@ff-labs/pi-fff",
+    "npm:@pi-unipi/notify",
+    "npm:@narumitw/pi-goal"
+  ]
+}

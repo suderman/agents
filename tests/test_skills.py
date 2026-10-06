@@ -21,7 +21,10 @@ class SkillsTests(unittest.TestCase):
         self.work = Path(self.temporary.name)
         self.root = self.work / "agents"
         (self.root / "lib").mkdir(parents=True)
-        (self.root / "skills").mkdir()
+        self.home = self.work / "home"
+        self.personal = self.home / "profile/skills"
+        self.personal.mkdir(parents=True)
+        self.env = {**os.environ, "HOME": str(self.home), "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1"}
         shutil.copy2(REPO / "lib/skills", self.root / "lib/skills")
         self.write_json("skills.json", {"skills": []})
         self.write_json("skills.lock", {"skills": []})
@@ -68,6 +71,7 @@ class SkillsTests(unittest.TestCase):
     def run_command(self, command, error=None, arguments=()):
         result = subprocess.run(
             [str(self.root / "lib/skills"), command, *arguments],
+            env=self.env,
             capture_output=True,
             text=True,
             check=False,
@@ -84,12 +88,12 @@ class SkillsTests(unittest.TestCase):
 
     def snapshot(self):
         return {
-            str(path.relative_to(self.root / "vendor/skills")): (
+            str(path.relative_to(self.root / "skills")): (
                 path.read_bytes(),
                 path.stat().st_mode & 0o777,
             )
-            for path in (self.root / "vendor/skills").rglob("*")
-            if path.is_file()
+            for path in (self.root / "skills").rglob("*")
+            if path.is_file() and path.name != ".state.json"
         }
 
     def test_empty_manifest(self):
@@ -109,11 +113,11 @@ class SkillsTests(unittest.TestCase):
         self.assertEqual(self.lock()[0]["ref"], "HEAD")
         (self.upstream / "collection/alpha/SKILL.md").write_text("changed upstream\n")
         self.commit()
-        shutil.rmtree(self.root / "vendor")
+        shutil.rmtree(self.root / "skills")
         self.run_command("materialize")
         self.assertEqual(self.snapshot(), before)
-        (self.root / "vendor/skills/alpha/run").write_text("local edit\n")
-        (self.root / "vendor/skills/unselected").mkdir()
+        (self.root / "skills/alpha/run").write_text("local edit\n")
+        (self.root / "skills/unselected").mkdir()
         self.run_command("materialize")
         self.run_command("materialize")
         self.run_command("check")
@@ -130,7 +134,7 @@ class SkillsTests(unittest.TestCase):
         self.assertNotEqual(second, self.first)
         self.assertEqual(self.lock()[0]["revision"], second)
         self.assertIn(
-            "New revision", (self.root / "vendor/skills/alpha/SKILL.md").read_text()
+            "New revision", (self.root / "skills/alpha/SKILL.md").read_text()
         )
         lock = (self.root / "skills.lock").read_bytes()
         (self.root / "skills.lock").unlink()
@@ -143,14 +147,14 @@ class SkillsTests(unittest.TestCase):
         self.select(self.entry, beta)
         self.run_command("update")
         self.assertEqual(
-            {path.name for path in (self.root / "vendor/skills").iterdir()},
+            {path.name for path in (self.root / "skills").iterdir() if path.name != ".state.json"},
             {"alpha", "beta"},
         )
-        self.assertFalse(list((self.root / "vendor").rglob(".git")))
-        self.assertFalse(list((self.root / "vendor").rglob("unrelated.txt")))
+        self.assertFalse(list((self.root / "skills").rglob(".git")))
+        self.assertFalse(list((self.root / "skills").rglob("unrelated.txt")))
         self.select(beta)
         self.run_command("update")
-        self.assertFalse((self.root / "vendor/skills/alpha").exists())
+        self.assertFalse((self.root / "skills/alpha").exists())
 
     def test_add_and_remove_keep_other_revisions_locked(self):
         self.run_command("update")
@@ -173,15 +177,15 @@ class SkillsTests(unittest.TestCase):
         )
         self.assertEqual(self.lock()[1]["ref"], "main")
         self.assertNotIn(
-            "New upstream", (self.root / "vendor/skills/alpha/SKILL.md").read_text()
+            "New upstream", (self.root / "skills/alpha/SKILL.md").read_text()
         )
         (self.upstream / "collection/beta/extra").write_text("later revision\n")
         self.commit()
         self.run_command("remove", arguments=("alpha",))
         self.assertEqual(self.lock()[0]["revision"], second)
         self.assertEqual(self.lock()[0]["name"], "beta")
-        self.assertFalse((self.root / "vendor/skills/alpha").exists())
-        self.assertFalse((self.root / "vendor/skills/beta/extra").exists())
+        self.assertFalse((self.root / "skills/alpha").exists())
+        self.assertFalse((self.root / "skills/beta/extra").exists())
         self.run_command("check")
         self.run_command("remove", arguments=("beta",))
         self.assertEqual(self.lock(), [])
@@ -201,7 +205,7 @@ class SkillsTests(unittest.TestCase):
 
     def test_selection_failures_preserve_source_files_and_tree(self):
         self.run_command("update")
-        self.add_skill(self.root / "skills/beta", "beta")
+        self.add_skill(self.personal / "beta", "beta")
         before = self.snapshot()
         sources = [
             (self.root / name).read_bytes() for name in ["skills.json", "skills.lock"]
@@ -270,13 +274,13 @@ class SkillsTests(unittest.TestCase):
             (self.root / name).read_bytes() for name in ["skills.json", "skills.lock"]
         ]
         shutil.rmtree(self.upstream)
-        shutil.rmtree(self.root / "vendor")
+        shutil.rmtree(self.root / "skills")
         result = self.run_command("list")
         self.assertIn(
             f"alpha\tHEAD\t{self.first}\t{self.upstream}\tcollection/alpha",
             result.stdout,
         )
-        self.assertFalse((self.root / "vendor").exists())
+        self.assertFalse((self.root / "skills").exists())
         self.assertEqual(
             [
                 (self.root / name).read_bytes()
@@ -288,18 +292,18 @@ class SkillsTests(unittest.TestCase):
     def test_rebuild_discards_invalid_vendor_edits(self):
         self.run_command("update")
         before = self.snapshot()
-        (self.root / "vendor/skills/alpha/SKILL.md").write_text("broken local edit\n")
+        (self.root / "skills/alpha/SKILL.md").write_text("broken local edit\n")
         self.run_command("materialize")
         self.assertEqual(self.snapshot(), before)
 
     def test_deselection_allows_maintained_replacement(self):
         self.run_command("update")
-        self.add_skill(self.root / "skills/alpha", "alpha")
+        self.add_skill(self.personal / "alpha", "alpha")
         self.select()
         self.run_command("update")
         self.run_command("check")
         self.assertEqual(self.snapshot(), {})
-        self.assertTrue((self.root / "skills/alpha/SKILL.md").exists())
+        self.assertTrue((self.personal / "alpha/SKILL.md").exists())
 
     def test_root_skill_and_explicit_ref(self):
         self.add_skill(self.upstream, "root-skill")
@@ -314,24 +318,24 @@ class SkillsTests(unittest.TestCase):
     def test_duplicate_names_fail(self):
         self.select(self.entry, {**self.entry, "path": "collection/beta"})
         self.run_command("update", "duplicate skill name: alpha")
-        self.assertFalse((self.root / "vendor").exists())
+        self.assertFalse((self.root / "skills").exists())
 
     def test_maintained_collision_fails_without_writes(self):
         self.run_command("update")
         before = self.snapshot()
-        self.add_skill(self.root / "skills/alpha", "alpha")
-        maintained = (self.root / "skills/alpha/SKILL.md").read_bytes()
+        self.add_skill(self.personal / "alpha", "alpha")
+        maintained = (self.personal / "alpha/SKILL.md").read_bytes()
         for command in ["update", "materialize", "check"]:
-            self.run_command(command, "maintained/vendor skill name collision: alpha")
+            self.run_command(command, "community/personal skill name collision: alpha")
         self.assertEqual(self.snapshot(), before)
-        self.assertEqual((self.root / "skills/alpha/SKILL.md").read_bytes(), maintained)
+        self.assertEqual((self.personal / "alpha/SKILL.md").read_bytes(), maintained)
 
     def test_declared_name_collision(self):
-        for directory in ["different-directory", "category/nested"]:
+        for directory in ["different-directory"]:
             with self.subTest(directory=directory):
-                self.add_skill(self.root / "skills" / directory, "alpha")
-                self.run_command("update", "skill name collision: alpha")
-                shutil.rmtree(self.root / "skills" / directory)
+                self.add_skill(self.personal / directory, "alpha")
+                self.run_command("update", "name must match")
+                shutil.rmtree(self.personal / directory)
 
     def test_missing_path_preserves_tree_and_lock(self):
         self.run_command("update")
@@ -409,74 +413,42 @@ class SkillsTests(unittest.TestCase):
         self.git("commit", "-qm", "Submodule fixture")
         self.run_command("update", "submodules are not supported")
 
-    def test_bootstraps_share_skills_without_copying_them(self):
+    def test_bootstraps_do_not_certify_global_skills(self):
+        for name in ["pi", "opencode", "hermes"]:
+            shutil.copytree(REPO / name, self.root / name)
+        for relative in ["shared-prompts.sh", "runtime.sh"]:
+            shutil.copy2(REPO / "lib" / relative, self.root / "lib" / relative)
         self.run_command("update")
-        shutil.copytree(REPO / "harnesses", self.root / "harnesses")
-        shutil.copytree(REPO / "prompts", self.root / "prompts")
-        shutil.copy2(
-            REPO / "lib/shared-prompts.sh", self.root / "lib/shared-prompts.sh"
-        )
-        homes = []
-        for harness, variable in [
-            ("pi", "PI_CODING_AGENT_DIR"),
-            ("opencode", "OPENCODE_CONFIG_DIR"),
-            ("hermes", "HERMES_HOME"),
-        ]:
-            runtime = self.work / f"runtime-{harness}"
-            runtime.mkdir()
-            secret = runtime / ".env"
-            secret.write_text("private\n")
-            secret.chmod(0o600)
-            before = (secret.read_bytes(), secret.stat().st_ino, secret.stat().st_mode)
-            env = {
-                **os.environ,
-                variable: str(runtime),
-                "XDG_STATE_HOME": str(self.work / "state"),
-            }
-            bootstrap = self.root / "harnesses" / harness / "bootstrap"
+        self.add_skill(self.personal / "alpha", "alpha")
+        self.run_command("check", "skill name collision")
+        (self.root / "skills.lock").unlink()
+        for harness, variable in [("pi", "PI_CODING_AGENT_DIR"), ("opencode", "OPENCODE_CONFIG_DIR"), ("hermes", "HERMES_HOME")]:
+            runtime = self.home / harness
+            self.add_skill(runtime / "skills/local", "local")
+            before = (runtime / "skills/local/SKILL.md").read_bytes()
+            env = {**self.env, variable: str(runtime)}
             for _ in range(2):
-                subprocess.run([str(bootstrap)], env=env, check=True)
-            self.assertEqual(
-                (secret.read_bytes(), secret.stat().st_ino, secret.stat().st_mode),
-                before,
-            )
-            self.assertFalse((runtime / "skills").exists())
-            self.assertFalse(runtime.is_symlink())
-            homes.append((bootstrap, env, runtime))
-        shared = ["~/.agents/skills", "~/.agents/vendor/skills"]
-        self.assertEqual(
-            json.loads((homes[0][2] / "settings.json").read_text())["skills"], shared
-        )
-        self.assertEqual(
-            json.loads((homes[1][2] / "opencode.json").read_text())["skills"]["paths"],
-            shared,
-        )
-        hermes_dirs = subprocess.check_output(
-            [
-                "yq",
-                "-o=json",
-                ".skills.external_dirs",
-                str(homes[2][2] / "config.yaml"),
-            ],
-            text=True,
-        )
-        self.assertEqual(json.loads(hermes_dirs), shared)
-        self.add_skill(self.root / "skills/alpha", "alpha")
-        for bootstrap, env, runtime in homes:
-            before = {
-                path: (path.read_bytes(), path.stat().st_ino)
-                for path in runtime.rglob("*")
-                if path.is_file()
-            }
-            result = subprocess.run(
-                [str(bootstrap)], env=env, capture_output=True, text=True, check=False
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("skill name collision", result.stderr)
-            self.assertEqual(
-                {path: (path.read_bytes(), path.stat().st_ino) for path in before},
-                before,
-            )
+                subprocess.run([str(self.root / harness / "bootstrap")], env=env, check=True)
+            self.assertEqual((runtime / "skills/local/SKILL.md").read_bytes(), before)
+
+    def test_check_detects_content_and_mode_drift(self):
+        self.run_command("update")
+        executable = self.root / "skills/alpha/run"
+        executable.write_text("edited")
+        self.run_command("check", "differ from locked state")
+        self.run_command("materialize")
+        executable.chmod(0o644)
+        self.run_command("check", "differ from locked state")
+
+    def test_personal_symlink_preserved(self):
+        self.run_command("update")
+        external = self.work / "external"
+        self.add_skill(external, "external")
+        (self.personal / "external").symlink_to(external)
+        self.run_command("materialize")
+        self.run_command("check")
+        self.assertTrue((self.personal / "external").is_symlink())
+        self.assertEqual((external / "SKILL.md").read_text(), (self.personal / "external/SKILL.md").read_text())
 
 
 if __name__ == "__main__":
