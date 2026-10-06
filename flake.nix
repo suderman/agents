@@ -16,7 +16,7 @@
             '';
         });
       in {
-        inherit (packages) hermes-agent opencode;
+        inherit (packages) hermes-agent opencode claude-code;
         inherit pi;
         default = pi;
       })
