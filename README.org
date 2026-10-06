@@ -1,190 +1,260 @@
-* Personal agent configuration
+* Portable agent deployment
 
-This repository is checked out at =~/.agents=. It contains personally curated agent configuration and is the source of truth.
+This repository lives at =~/.agents=. It selects community skills and deploys
+harness configuration. Personal skills and prompts live outside this checkout,
+in =~/profile=. Each harness keeps its own writable home and runtime state.
 
-Harness-owned directories are mutable realizations of that configuration. Bootstrap scripts apply curated decisions outward. Runtime state never synchronizes back automatically.
-
-** Layout
+** Layout and ownership
 
 #+begin_src text
 ~/.agents/
-├── flake.nix           Pi, OpenCode, and Hermes packages
-├── flake.lock
-├── skills/             shared skills maintained here, consumed in place
-├── skills.json         selected third-party Git skills
-├── skills.lock         exact resolved revisions
-├── vendor/
-│   └── skills/         generated third-party skills, ignored by Git
-├── prompts/            shared user-invoked Markdown templates
-├── lib/                shared bootstrap plumbing and skill resolver
-├── harnesses/
-│   ├── pi/             curated Pi configuration and bootstrap
-│   ├── opencode/       curated OpenCode configuration and bootstrap
-│   └── hermes/         curated Hermes configuration and bootstrap
-└── tests/
+├── agents              apply, sync, doctor, and skill commands
+├── skills.json         community skill selections
+├── skills.lock         exact upstream Git commits
+├── skills/             generated community content, ignored by Git
+├── pi/                 Pi configuration, bootstrap, and task-drop prompts
+├── opencode/           OpenCode configuration and bootstrap
+├── hermes/             Hermes configuration and bootstrap
+├── claude/             Claude instructions and managed-entry adapter
+├── lib/                resolver and deployment helpers
+├── tests/              isolated local fixtures
+├── flake.nix           harness packages
+└── flake.lock
+
+~/profile/
+├── skills/             personal authored skills and supporting files
+└── prompts/            personal user-invoked templates
 #+end_src
 
-Home Manager owns installation, activation, persistence, secrets, services, and machine integration in =/etc/nixos=. Pi owns =~/.pi/agent=. OpenCode owns =~/.config/opencode=. Hermes owns =~/.hermes=. These application directories stay writable and do not point back into this repository.
+Commit community selections and their lock, not downloaded skills. Do not edit
+=skills/= by hand. Personal content has its own ownership and synchronization;
+this repository does not pull, commit, or push =~/profile=. There is no
+=~/profile/agents/= layer. The =recall-history= personal skill remains a symlink
+to its independently maintained Recall checkout. That checkout must be present
+on any machine using that link.
 
-Pi sessions stay under working-directory subfolders in =~/.local/state/pi/sessions=. The Pi wrapper sets =PI_CODING_AGENT_SESSION_DIR= so replacing or remounting =~/.pi/agent= cannot invalidate an active session path.
+| Harness | Default writable home | Shared skill discovery |
+|---------+-----------------------+------------------------|
+| Pi | =~/.pi/agent= | =settings.json skills= paths |
+| OpenCode | =~/.config/opencode= | =opencode.json skills.paths= |
+| Hermes | =~/.hermes= | =config.yaml skills.external_dirs= |
+| Claude Code | =~/.claude= | Managed individual links under =skills/= |
 
-Inbox drop-zone prompts live in =harnesses/pi/task-drop-prompts/=. Systemd watches and Herdr launch behavior stay in the NixOS repository, while prompt edits take effect without a rebuild.
+Pi, OpenCode, and Hermes refer to =~/.agents/skills= and =~/profile/skills=
+in place. Their native local skill directories remain active and untouched.
+Claude Code has no arbitrary skill-root setting. Its adapter installs individual
+links to these same sources, not a link over the whole native =skills/= directory.
+Native skills, synced skills, plugins, auth, sessions, and memories remain
+harness-owned. Shared names must not collide with personal or native skill names.
 
-Shared skills live in =~/.agents/skills/= and =~/.agents/vendor/skills/=. Pi uses its native =skills= paths, OpenCode uses =skills.paths=, and Hermes uses =skills.external_dirs=. No shared skill tree is copied into a harness home. Maintained skills are listed first; the resolver and bootstraps refuse maintained/vendor name collisions instead of silently shadowing a maintained skill. Hermes keeps its own =skills/= for bundled, installed, and generated skills. Its list prefers local entries, but bare-name loading refuses collisions across local and configured directories. Keep those names unique too. Shared skills are not write-protected; changing maintained skills requires approval. Skills that name Pi-only tools need adaptation before Hermes can use those tools.
+** Commands
 
-** Selected third-party skills
-
-Use =lib/skills= from any working directory. Adding or removing a skill updates =skills.json=, =skills.lock=, and the generated tree together, after fetch and layout checks succeed. Other selected skills stay at their locked commits. No upstream installers or build scripts run.
+The executable resolves its checkout from its own path, not the working directory.
 
 #+begin_src sh
-# Show selected skills, refs, exact commits, and source paths without fetching:
-~/.agents/lib/skills list
-
-# Add one skill. The name must match its SKILL.md frontmatter:
-~/.agents/lib/skills add pdf https://github.com/anthropics/skills.git --path skills/pdf --ref main
-
-# Remove a selected vendor skill, leaving maintained skills alone:
-~/.agents/lib/skills remove pdf
-
-# Show command-specific options:
-~/.agents/lib/skills add --help
+~/.agents/agents apply
+~/.agents/agents doctor
+~/.agents/agents sync
+~/.agents/agents skill list
+~/.agents/agents skill add pdf https://github.com/anthropics/skills.git --path skills/pdf --ref main
+~/.agents/agents skill remove pdf
+~/.agents/agents skill update
 #+end_src
 
-=--path= defaults to =.= and =--ref= defaults to =HEAD=. Duplicate names, maintained-skill collisions, invalid layouts, and failed fetches leave the manifest, lock, and generated tree unchanged. Add/remove require the existing manifest and lock to agree. They rebuild the remaining selected tree, so they need network access when it contains remote skills.
+=apply= validates the manifest/lock, personal layout, duplicate skill names,
+prompt contract, and enabled harness destinations before writing. It reuses a
+materialization whose recorded revisions, contents, and modes match the lock.
+If that tree is missing or changed, it fetches exact locked commits into a
+staging directory, validates every selected skill, and replaces only the generated
+tree. It never advances upstream refs or changes the lock. Valid repeat applies
+need no network and leave unchanged files in place. A first or repaired apply
+needs upstream access. Failed fetches preserve the existing tree, lock, and homes.
 
-You can still edit =skills.json= by hand and run =lib/skills update=. Each entry selects one directory; repeat =git= to select several skills from one repository. The current selection is:
+The generated =skills/.state.json= records selected revisions and file hashes
+and modes. It detects accidental drift without fetching; it is not a signature
+or protection against someone changing both the files and that record. The
+resolver rejects nested skills, submodules, symlinks, and special files in
+community selections. It runs no upstream installers, build scripts, or helpers.
+Git sources must retain locked commits for future reproduction.
 
-#+begin_src json
-{
-  "skills": [
-    {
-      "name": "impeccable",
-      "git": "https://github.com/pbakaus/impeccable.git",
-      "path": ".pi/skills/impeccable",
-      "ref": "main"
-    }
-  ]
-}
-#+end_src
+=sync= requires a clean attached branch with a tracking upstream and no pending
+Git operation. It refuses local-only or diverged commits before pulling, then
+runs =git pull --ff-only=. A stale tracking ref cannot permit a merge: the actual
+pull must also fast-forward. It never stashes, resets, rebases, merges, or pushes.
+After a successful pull, it executes the newly pulled =agents apply= entrypoint.
+A failed pull never applies configuration. Skill revisions still do not advance.
 
-=name= and =git= are required. =git= accepts a Git URL, SSH source, or absolute local repository path. =path= defaults to =.= for a repository-root skill. =ref= defaults to =HEAD= for the upstream default branch; a branch, tag, or commit can be selected explicitly. Paths must stay inside the upstream repository. Names must be lowercase letters/digits separated by single hyphens, at most 64 characters, and match =SKILL.md= frontmatter. Unknown fields and duplicate JSON keys or skill names fail.
+=doctor= performs read-only checks. It reports repository state, lock agreement,
+materialized drift, personal roots, names, prompts, dependencies, enabled harnesses,
+and deployed files. Missing or mismatched deployment returns nonzero. It does not
+fetch, create roots, repair configuration, contact services, or refresh the Git
+index. An absent personal root is optional; a malformed existing root is an error.
+Missing harness binaries are reported without preventing config-only deployment.
+This checks deployment, not login, provider availability, or live skill invocation.
 
-=skills.lock= contains the normalized declarations plus a full =revision= commit hash for each skill. Commit the manifest and lock, never downloaded contents. Python 3 and Git are the only resolver dependencies.
+All four adapters are enabled by default. Limit local deployment with:
 
 #+begin_src sh
-# Fresh checkout or rebuild from the existing lock, without advancing revisions:
-~/.agents/lib/skills materialize
-
-# After editing the manifest, or to advance ALL selected upstream refs:
-~/.agents/lib/skills update
-
-# Check declarations, lock agreement, layout, and maintained/vendor collisions:
-~/.agents/lib/skills check
+AGENTS_HARNESSES=pi,claude ~/.agents/agents apply
 #+end_src
 
-Materialization replaces only =vendor/skills/= and copies only selected directories. Updates fetch the requested refs, materialize them, and rewrite the lock after all fetches and layout checks succeed. Normal materialization fetches exact locked commits and leaves the lock unchanged. Missing locks or changed declarations require an explicit update. Git sources must retain the locked commits for later reproduction.
+=AGENTS_HARNESSES= accepts unique comma- or space-separated harness names. The
+same setting controls =doctor=. Invalid or empty selections fail. Bootstrap
+helpers need Bash, GNU coreutils, Python 3, Git, =jq= for Pi/OpenCode, and Mike
+Farah's =yq= v4 for Hermes. On NixOS, use =nix shell= when a tool is missing.
 
-Each selected directory must contain =SKILL.md= with name and description frontmatter. Nested skills, symlinks, special files, and submodules inside selected directories are rejected rather than copied incompletely. Select nested skills separately. No dependency installation or upstream build scripts run. Review third-party instructions before using them. Generated files are not manually maintained; rerun materialization to discard edits or remove deselected skills. Temporary fetches live under ignored =.scratch/= and are removed after each run.
+*** Community skill selection
 
-Bootstraps check the shared skill declarations and tree without fetching or updating. Run materialization before bootstrap when the manifest is nonempty. Pi packages in =harnesses/pi/settings.json= remain Pi packages.
+=name= and =git= are required. Names must match upstream =SKILL.md= frontmatter,
+use lowercase letters/digits separated by single hyphens, and be at most 64
+characters. =--path= defaults to =.= and =--ref= defaults to =HEAD=. A ref can
+be a branch, tag, or commit. Sources may be Git URLs, SSH sources, or absolute
+local repository paths. Paths must stay inside the upstream repository.
+Unknown fields, duplicate JSON keys, duplicate selections, invalid layouts,
+collisions, and fetch failures leave source files and materialization unchanged.
 
-Run =python3 -B tests/test_skills.py= for local Git fixture tests. The bootstrap fixtures also need =jq= and Mike Farah's =yq= v4.
+=skill add= and =skill remove= update selection, lock, and tree together after
+preflight. Other selected skills remain at their existing locked revisions.
+=skill update= explicitly advances all selected refs and rebuilds the lock;
+it also resolves deliberate edits to =skills.json=. These commands do not
+apply runtime configuration. Run =agents apply= afterward.
 
-*** Impeccable
+Current upstream selections are Impeccable, Superpowers' =systematic-debugging=,
+and Vercel's =web-design-guidelines=. The former local name
+=ui-guidelines-review= is retired. No local maintained forks are kept active.
 
-[[https://impeccable.style][Impeccable]] is installed at =vendor/skills/impeccable/= from the upstream Pi distribution. The shared =prompts/impeccable.md= adds =/impeccable= in Pi and OpenCode. Run their bootstraps after a fresh checkout to install the prompt. Run =/reload= in Pi or start a new OpenCode session after installing or updating it.
+Impeccable's Git skill is pinned, but its launcher may download a separate
+versioned engine into =~/.impeccable/= when used. That engine is not pinned by
+=skills.lock= and has not been tested here. Review upstream instructions before
+running it. Vercel's skill fetches current web-interface guidelines during a
+review, so pinning the skill does not freeze those guidelines either.
 
-#+begin_src text
-/impeccable                    Show the context-aware command menu
-/impeccable init               Capture this project's product context
-/impeccable document           Describe its existing design system
-/impeccable audit src/app      Review a specific interface
-/impeccable polish src/app     Refine a specific interface
+** Personal prompts
+
+Store flat, regular =<lowercase-name>.md= files in =~/profile/prompts/=. Nested
+files and symlinks are rejected. Begin with exactly these three frontmatter lines:
+
+#+begin_src yaml
+---
+description: Review changes
+---
 #+end_src
 
-Pi also supports =/skill:impeccable audit src/app= without the prompt alias. Hermes discovers the same shared skill but does not use shared slash-command prompts. Relative references and helper scripts resolve from the installed skill directory, while the working directory stays at the target project.
+Descriptions must start with a letter and contain plain letters, digits, spaces,
+commas, periods, slashes, parentheses, underscores, or hyphens, with no trailing
+spaces. YAML boolean/null words are rejected. Use =$ARGUMENTS= for optional input.
+Do not use numbered placeholders, =$@=, shell interpolation, =@file= imports,
+or harness-only metadata in shared templates.
 
-The upstream launcher may download its versioned engine on first use into =~/.impeccable/=. It checks the release's SHA256 sidecar, but =skills.lock= pins the Git skill only, not the downloaded engine's checksum. No engine has been provisioned or tested on NixOS here. An existing engine can be selected with =IMPECCABLE_BIN=. If the helper fails, follow the skill's documented fallback and read existing =PRODUCT.md= and =DESIGN.md= directly. Project hooks remain opt-in. Do not use the upstream installer or updater to replace the repo-managed skill; use =lib/skills update= and reload instead.
+Pi copies templates into =prompts/= and OpenCode into =commands/=. Both make
+writable atomic copies and preserve unrelated commands. They do not delete
+retired personal copies automatically. Claude copies them into =commands/= and
+adds =disable-model-invocation: true= so templates remain user-invoked. Hermes
+has no shared slash-command prompt adapter. Keep harness-only templates under
+=pi/prompts/=, =opencode/commands/=, or =claude/commands/=. Shared/specific filename
+collisions fail instead of relying on copy order.
 
-** Shared prompts
+Claude gives a skill priority over a same-name command file. For example,
+=/impeccable= uses its linked upstream skill even when the personal alias is
+installed. Pi supports =/skill:impeccable= as well as the personal prompt alias.
+Use =/reload= in Pi or start a new harness session after resource changes.
 
-=skills/= holds capabilities and knowledge. =prompts/= holds user-invoked templates such as =/commit= and =/commitall=. Pi and OpenCode install the same files through their bootstraps. Hermes continues to use shared =skills/=, not =prompts/=.
-
-The shared contract is intentionally small:
-
-- Use flat, regular Markdown files named with lowercase letters, digits, and hyphens, such as =review-changes.md=. The filename determines the command name.
-- Start with exactly three frontmatter lines: =---=, =description: Review changes=, =---=. Use a single plain description, starting with a letter and containing only letters, digits, spaces, commas, periods, slashes, parentheses, underscores, or hyphens, with no trailing spaces. Do not use YAML boolean/null values as descriptions. No other metadata is shared.
-- Use =$ARGUMENTS= for optional input. Pi removes argument quoting and joins words with spaces; OpenCode retains the raw input. Do not depend on exact quoting or whitespace. Invoke templates without placeholders with no arguments, since OpenCode appends unused arguments while Pi ignores them.
-- Do not use positional placeholders, Pi defaults/slices, =$@=, OpenCode shell injection, or =@file= references. OpenCode's last numbered placeholder consumes remaining arguments, unlike Pi's single-argument substitution.
-- Keep instructions tool-neutral. Agent/model selection, delegation, and harness-only metadata or behavior belong in =harnesses/pi/prompts/= or =harnesses/opencode/commands/=, not in shared files.
-
-Both bootstraps validate shared filenames, frontmatter, and substitution syntax before writing runtime files. They reject a shared filename also present in the corresponding harness-specific source directory. Rename one rather than relying on copy order. Shared files replace runtime files with the same name, including the former commit commands; unrelated runtime files survive. Project, package, extension, and JSON-defined command precedence remains harness-owned, so avoid reusing these names there.
-
-Pi copies shared files into =$PI_CODING_AGENT_DIR/prompts/=, normally =~/.pi/agent/prompts/=. OpenCode copies them into =$OPENCODE_CONFIG_DIR/commands/=, normally =~/.config/opencode/commands/=. Its bootstrap also accepts =OPENCODE_DIR= or the XDG config home; use =OPENCODE_CONFIG_DIR= when launching OpenCode against a custom destination. Both use their existing atomic writable-copy logic and skip unchanged files. Run =/reload= in Pi or start a new OpenCode session after changes.
-
-Shared commands use the current agent; Luna is OpenCode's configured default. =harnesses/pi/prompts/= and =harnesses/opencode/commands/= currently have no templates, but remain supported for harness-specific ones. =harnesses/pi/task-drop-prompts/= stays separate because its Org prompts drive the Pi/Herdr inbox service, not user slash commands.
-
-Run =tests/test-prompts= to check both bootstraps, shared syntax, collisions, runtime preservation, and repeat runs without touching live homes.
-
-** Opt-in project supervision
-
-=skills/sheepdog/= pairs a visible Pi supervisor with a visible Pi worker in Herdr. The worker writes project code and publishes reviewed commits; the supervisor reviews progress, requests corrections, and approves publication only when the project's mandate grants it. Both roles use separate interactive Pi sessions, panes, and terminals. Hermes is not required. This does not replace normal hands-on work or enable supervision globally.
-
-Read =skills/sheepdog/sheepdog.org= before starting. Supply the exact mandate, canonical Org task path/heading, and verified supervisor model/session evidence. Bind the existing Pi worker and prepared Pi supervisor to distinct, exact sessions in one workspace, then run the Python watcher in a visible shell pane. Its timer requests reviews during active work, including streaming output and long tools, as well as at completion. A private worker-ownership record prevents competing runs on the same Herdr instance. Fresh reviews warn once at a 900-second soft acknowledgement threshold and stop at a separate 1800-second hard timeout, capped by absolute watch expiry. =--review-seconds= sets the soft threshold; =--review-hard-seconds= sets the hard timeout. Soft overdue keeps the same review active without reminders or duplicate prompts. Legacy clocks keep their original hard deadline, with no migration or revival. Old Hermes bindings cannot continue; explicitly stop the old watch before binding a fresh Pi-only run. A hard timeout stops scheduling without replay, restart, or renewal. Runtime state, the mandate, and the generated =handoff.org= belong outside the worker repository. The handoff preserves accepted work, verification, publication, remaining work, and the stopping reason without relying on the launcher to update Org.
-
-The helper uses Python's standard library and the local Herdr CLI. Snapshots read the visible viewport without scrolling an active worker; earlier output may require separate inspection of its pinned session. It pauses on identity changes or uncertain delivery instead of retrying input. Steering and normal Pi abort are separate opt-in permissions. After abort, the supervisor must verify cancellation and an empty editor before submitting a correction; the helper cannot prove those conditions or stop every daemon-backed build. These role rules are not an OS sandbox. Stop or budget expiry leaves the worker and workspace available. Expiry records the latest observed worker state, including work that continues unsupervised, and never silently renews the budget. Reported worker cwd/foreground cwd are checked against the repository on each inspection/control path, but they may be stale or miss child-tool directories and do not constrain command targets. No service, global permission, model override, or additional agent manager is installed.
-
-Run =python3 -B skills/sheepdog/scripts/test_sheepdog.py= for credential-free Pi-pair binding, scheduling, correction/recovery, and safety checks. Earlier live trials used Hermes supervisors, not Pi. The initial =guessit= trial used =gpt-6-luna= as supervisor, deliberately planted omissions and a wrong-target marker, predefined slices, and a local bare remote, not GitHub. A second trial verified =gpt-6.1-sol= in the live supervisor session. Given an outcome rather than a slice list, Hermes selected one bounded opt-in score-storage slice, independently verified all 23 tests and reviewed file blobs, confirmed branch publication, and stopped. Worker transcripts, supervisor checks, and watcher events remain separate evidence. This establishes a small outcome-driven slice, not open-ended decomposition or unattended reliability across larger projects. The second trial required explicit recovery from an active-terminal history capture error; its measurements separate that downtime from review time. These historical Hermes trials do not validate live Pi-supervisor behavior; a controlled Pi-only trial is still needed. Future launches verify their actual selected model; the skill does not select a global default. A compact mandate is in =skills/sheepdog/mandate-example.org=.
-
-** Packages
-
-The flake re-exports Pi, OpenCode, and Hermes from [[https://github.com/numtide/llm-agents.nix][Numtide's llm-agents flake]]. Pi is the default package. It uses Numtide's supported Node build because the Bun binary omits codemode's worker. Its wrapper sets its own package directory so nested launches cannot inherit an older Pi's assets.
+** Harness deployment
 
 #+begin_src sh
-nix build .#pi .#opencode .#hermes-agent
-nix run .#pi
-nix run .#opencode
-nix run .#hermes-agent
+~/.agents/pi/bootstrap
+~/.agents/opencode/bootstrap
+~/.agents/hermes/bootstrap
+~/.agents/claude/bootstrap
 #+end_src
 
-GitHub Actions updates =flake.lock= daily at 02:00 MST (09:00 UTC, 03:00 MDT). The workflow checks all package outputs, builds the three Linux packages, and runs their version commands and a credential-free Pi codemode worker check before committing a changed lock. It also supports manual runs. These commits do not install packages on hosts; NixOS must update its =agents= input and rebuild to use them.
+Each bootstrap handles its own declared configuration and local preflight. It
+does not run the shared resolver, fetch skills, or certify global lock agreement.
+Use =agents apply= for complete deployment. =bootstrap --check= is a read-only
+adapter preflight. Claude also supports =bootstrap --verify=.
 
-** Bootstrap
+Override destinations with =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=,
+=OPENCODE_DIR=, =HERMES_HOME=, or =CLAUDE_CONFIG_DIR=. OpenCode also honors
+=XDG_CONFIG_HOME=. Tests set a temporary =HOME= with isolated profile roots.
+Source-tree destinations, the home root, and managed directory symlinks are
+rejected before writes. Named file symlinks become writable copies without
+changing their targets. There are no whole-home source/store symlinks.
 
-Home Manager clones this repository into =~/.agents= when needed, then runs enabled harness bootstrap scripts during activation. Existing checkouts stay under user control. Run the scripts by hand when testing:
+Pi deep-merges declared settings and preserves unknown keys. It retires the
+old =subagents= setting and MCP-adapter cache files. Declared files, extensions,
+prompts, and themes are refreshed without removing unrelated entries. A
+machine-generated =themes/stylix.json= survives. =pi/fix-dcp-package= repairs
+pi-dcp's incorrectly published TypeBox dependency without changing extension
+code. Pi packages and package-provided skills remain Pi-managed.
+
+OpenCode refreshes its named config, agents, commands, and themes. Existing
+native skills, Git metadata, local commands, and other files stay in place.
+
+Hermes deep-merges YAML maps. Declared scalars and whole lists win; unrelated
+settings and comments survive. Invalid, non-mapping, or multi-document YAML
+fails without overwriting it. =SOUL.md= remains a writable declared copy.
+Hermes uses the named =custom:codex-lb= Responses provider, native Camofox browser,
+and its native web/vision tools. Services, browser profiles, secrets, and the
+Herdr/Pi launch integration remain separate machine configuration.
+
+Claude refreshes =CLAUDE.md= and records only its own skill links and prompt
+copies in =~/.claude/.agents-managed.json=. It removes deselected entries only
+when they still match that record. If a managed entry was changed locally or a
+native entry occupies its name, apply fails without overwriting it. Rename or
+preserve the conflicting entry explicitly. Existing =settings.json= is validated
+but not replaced; no model, permission policy, credentials, or MCP servers are
+invented. Curated Claude-only commands can live in =claude/commands/=.
+
+** Nix packages and machine integration
+
+The flake exports =pi=, =opencode=, =hermes-agent=, and =claude-code= from the
+existing [[https://github.com/numtide/llm-agents.nix][Numtide llm-agents input]]. Pi remains default and uses its Node build so
+codemode's worker is available. The wrapper pins its own package asset directory.
 
 #+begin_src sh
-~/.agents/harnesses/pi/bootstrap
-~/.agents/harnesses/opencode/bootstrap
-~/.agents/harnesses/hermes/bootstrap
+nix build .#pi .#opencode .#hermes-agent .#claude-code
+nix run .#claude-code -- --version
 #+end_src
 
-Set =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=, =OPENCODE_DIR=, or =HERMES_HOME= to test against another destination.
+Home Manager owns package installation, persistence, secrets, services, and
+machine integrations. Mutable =agents apply= and =agents sync= are interactive
+operations, not activation prerequisites. Activation must not fetch this
+checkout or validate mutable skill/profile content. Missing checkouts, absent
+personal roots, and stale locks must not block a NixOS rebuild.
 
-Pi's bootstrap deep-merges the declared =settings.json= into the current runtime file. Declared values win, while unknown application-owned keys survive. The retired =subagents= key is removed. Other named files are refreshed as normal writable copies. Named entries under =harnesses/pi/extensions/=, =harnesses/pi/prompts/=, and =harnesses/pi/themes/= are copied along with shared =prompts/=, without deleting unrelated entries. Run =harnesses/pi/test-bootstrap= for isolated preservation checks.
+The system repository has not been changed by this refactor. Its old
+=harnesses/= paths and activation bootstrap calls require a separate migration.
+That handoff is recorded in the Agents Org project, outside this repository.
+Until it is applied, do not assume the existing activation uses this new layout.
 
-The NixOS Pi wrapper runs =harnesses/pi/fix-dcp-package= before startup. It moves pi-dcp's incorrectly published TypeBox dependency to =peerDependencies= with a =*= range. Corrected releases are left unchanged; extension code and shared npm dependencies are not touched.
+For default Claude Code paths, persist =~/.claude/= and =~/.claude.json=.
+The directory holds settings, skills, commands, plugins, Linux login credentials,
+transcripts, prompt history, file snapshots, and auto memory. The separate JSON
+file holds application state including project trust, OAuth-related state, and
+personal MCP configuration. A custom =CLAUDE_CONFIG_DIR= changes the directory;
+verify actual paths before persisting an override. These are mutable private
+files, never repository files or read-only store links.
 
-Pi uses native =mcp.json= for Chrome DevTools, Context7, gh_grep, and MiniMax. Chrome tools are exposed directly; the other servers use native codemode discovery. =defaultTools: ["+codemode"]= keeps ordinary tools available and adds sandboxed scripts for parallel calls and filtering. The old MCP adapter is no longer loaded. Bootstrap removes its retired =mcp-adapter.json=, =mcp-cache.json=, and =mcp-npx-cache.json= files; migration backups remain untouched.
+See Claude's [[https://code.claude.com/docs/en/skills][skill locations and symlink support]],
+[[https://code.claude.com/docs/en/claude-directory][directory and application-data reference]], and
+[[https://code.claude.com/docs/en/memory][instruction and memory locations]]. Authenticated sessions and provider access
+are not part of credential-free deployment tests.
 
-Home Manager generates =themes/stylix.json= after Pi's bootstrap from its Stylix palette and the curated theme's existing color roles. Pi selects that fixed theme instead of the terminal-derived system theme. The generated file is a writable runtime copy, not a repository file or store symlink, and bootstrap preserves it.
+** Verification
 
-OpenCode's bootstrap refreshes its named config files and named entries under =harnesses/opencode/agents/=, =harnesses/opencode/commands/=, and =harnesses/opencode/themes/=, plus shared =prompts/= as runtime commands. It leaves all other runtime files alone. During migration from the old configuration checkout, it moves =.git= to =~/.local/state/opencode/legacy-config.git= before writing the runtime copy. Run =harnesses/opencode/test-bootstrap= for isolated preservation checks.
+#+begin_src sh
+python3 -B tests/test_skills.py
+python3 -B tests/test_agents.py
+pi/test-bootstrap
+opencode/test-bootstrap
+hermes/test-bootstrap
+tests/test-prompts
+tests/test-update-flake-lock
+#+end_src
 
-Hermes deep-merges =config.yaml= into the runtime YAML using Mike Farah's =yq= v4, provided by Nix's =yq-go= package. Repo-declared values win, including whole lists; unrelated keys survive at every nesting level. Runtime-only setup, config, and dashboard settings therefore persist. Bootstrap still refreshes =SOUL.md= as a repo-owned writable copy. Both writes are atomic and skip unchanged writable regular files. Empty runtime configs initialize as mappings. Malformed, scalar, list, or multi-document YAML fails without overwriting it. Credentials, auth, sessions, jobs, memories, databases, profiles, and local skills stay untouched. Run =harnesses/hermes/test-bootstrap= for isolated preservation and repeat-run checks.
-
-Hermes defaults to =gpt-6-luna= with high reasoning through the named =custom:codex-lb= provider. Its =providers.codex-lb= entry selects =codex_responses= and reads =CODEX_LB_API_KEY= from the environment. Hermes's Responses transport sends =strict: false= for function tools so optional arguments stay optional. Bare =provider: custom= ignores a Responses override on non-OpenAI URLs, so changing only =model.api_mode= is insufficient. Legacy =model.base_url=, =model.api_key=, and =model.api_mode= fields may remain in the mutable config; the named provider entry controls this route. Auxiliary calls use native routing. Its instructions send substantial task execution and explicit Pi requests to Herdr/Pi with Pi's stronger configured model. Inside Herdr, Hermes uses its inherited session. From an ordinary terminal or dashboard, it selects the running local =default= session explicitly and creates an unfocused workspace. Missing =HERDR_ENV= is not a blocker for this authorized launch path; Hermes never fakes pane context or uses the UI-focused pane. It waits for Pi and reads the result before reporting completion. No automatic jobs, fleet gateway, dashboard, or Desktop service is enabled by this configuration. NixOS retains the former =~/.local/share/hermes= and Desktop state for rollback without importing them into the fresh home.
-
-Hermes selects its native Camofox browser backend with managed persistence. On Kit, Home Manager supplies =CAMOFOX_URL= for one =hermes= browser server and persists its browser data. Hermes uses a browser identity derived from =~/.hermes=; retired June/Pax history is not imported. The service uses a virtual display rather than the desktop. Release metadata lives in =~/src/suderman/pins=; NixOS owns the package and compatibility test. Server and engine updates are report-only until the server lockfile and engine pass navigation, click, and storage-reopen checks together. This is a tested baseline, not a permanent version freeze. The package does not refresh npm or fetch the latest engine at runtime. The package isolates the client's browser cache from =~/.cache/camoufox=; persistent browser profiles remain in the service data directory. A successful =/health= request alone does not prove browsing works. Open =https://hermes.camofox.kit/vnc.html?autoconnect=1= to view that display or log in manually after Hermes opens a page. Do not use =/wake= to select a profile for Hermes; the wake helper creates its own viewer identity. Pi/OpenCode keep their Chromium/DevTools setup. Cog has no browser endpoint configured.
-
-Hermes uses native =web_search= and =web_extract= with the existing =TAVILY_API_KEY=. Native =vision_analyze= resolves its auxiliary model to =gpt-6-luna= through codex-lb. These tools need no MiniMax MCP or separate vision provider. Search, page extraction, and image analysis have been tested. Image crop bounds are original-image pixel coordinates; omitting =region= reads the whole image. The named Responses route was tested with whole-image region omission and deliberate pixel crops. The former Chat-Completions route omitted the strict-mode flag; its upstream Responses default made the optional crop mandatory and led to zero or 1-pixel bounds. Do not work around that mismatch by inventing image dimensions.
-
-On the first run, Pi and OpenCode's bootstraps remove their old harness-local =skills/= entry from active use. Existing files move to =~/.local/state/pi/legacy-skills= or =~/.local/state/opencode/legacy-skills=. Shared skills then come from =~/.agents/skills/= and =~/.agents/vendor/skills/=.
-
-All scripts are safe to run repeatedly. They do not delete unknown packages, plugins, extensions, or application state.
-
-** Secrets and managed integrations
-
-Secrets stay in agenix and reach each mutable home through Home Manager-generated =.env= files. Do not add those files here.
-
-Herdr owns its Pi and OpenCode integration files. Those files belong in the mutable application homes and are deliberately absent from this repository. Reinstalling or updating a Herdr integration must not change =~/.agents=.
+Fixtures use temporary homes and local Git repositories. They cover locked
+reproduction, failed fetches, malformed inputs, collisions, state preservation,
+repeat runs, read-only doctor, and conservative sync. No test depends on personal
+content being present on the CI host. =pi/test-codemode= separately checks the
+packaged codemode worker. The daily lock-update workflow also builds and smoke
+tests all four packages before publishing a package-lock change.
