@@ -236,6 +236,68 @@ class AgentsTests(unittest.TestCase):
                 self.assertEqual(before, snapshot(self.home))
                 shutil.rmtree(target)
 
+    def test_claude_pretrusts_home_roots_and_repositories(self):
+        src = self.home / "src"
+        org = self.home / "org"
+        repo = src / "owner/repo"
+        nested = repo / "nested"
+        worktree = org / "worktree"
+        repo.parent.mkdir(parents=True)
+        org.mkdir()
+        self.git(self.work, "clone", "-q", str(self.upstream), str(repo))
+        nested.mkdir()
+        self.git(nested, "init", "-q", "-b", "main")
+        self.git(repo, "worktree", "add", "-q", "-b", "other", str(worktree))
+        (src / "external").symlink_to(self.upstream, target_is_directory=True)
+        state = self.home / ".claude.json"
+        previous = {"oauth": "preserve", "projects": {
+            str(repo): {"hasTrustDialogAccepted": False, "allowedTools": ["Read"], "history": ["keep"]},
+            "/unrelated": {"hasTrustDialogAccepted": False, "mcpServers": {"keep": {}}},
+        }}
+        state.write_text(json.dumps(previous))
+        before = snapshot(self.home)
+        result = subprocess.run([str(self.root / "claude/bootstrap"), "--check"], env=self.env,
+                                text=True, capture_output=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(before, snapshot(self.home))
+        self.command("apply")
+        actual = json.loads(state.read_text())
+        self.assertEqual(actual["oauth"], previous["oauth"])
+        self.assertEqual(actual["projects"]["/unrelated"], previous["projects"]["/unrelated"])
+        self.assertEqual(actual["projects"][str(repo)],
+                         {**previous["projects"][str(repo)], "hasTrustDialogAccepted": True})
+        self.assertEqual({p for p, value in actual["projects"].items() if value.get("hasTrustDialogAccepted")},
+                         {str(src), str(org), str(repo), str(nested)})
+        self.assertEqual(state.stat().st_mode & 0o777, 0o600)
+        backups = list((self.home / ".claude/backups").glob("agents-.claude.json.*"))
+        self.assertEqual([json.loads(p.read_text()) for p in backups], [previous])
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        before = snapshot(self.home)
+        self.command("apply")
+        self.command("doctor")
+        self.assertEqual(before, snapshot(self.home))
+        new = src / "new-clone"
+        new.mkdir()
+        self.git(new, "init", "-q", "-b", "main")
+        before = snapshot(self.home)
+        self.command("doctor", error="workspace trust")
+        self.assertEqual(before, snapshot(self.home))
+        self.command("apply")
+        self.assertTrue(json.loads(state.read_text())["projects"][str(new)]["hasTrustDialogAccepted"])
+        custom = self.home / "custom-claude"
+        self.command("apply", env={**self.env, "AGENTS_HARNESSES": "claude", "CLAUDE_CONFIG_DIR": str(custom)})
+        self.assertTrue(json.loads((custom / ".claude.json").read_text())["projects"][str(repo)]["hasTrustDialogAccepted"])
+
+    def test_claude_malformed_trust_state_fails_before_any_writes(self):
+        (self.home / "src").mkdir()
+        state = self.home / ".claude.json"
+        for content in ["[]", '{"projects":[]}', json.dumps({"projects": {str(self.home / "src"): []}})]:
+            with self.subTest(content=content):
+                state.write_text(content)
+                before = snapshot(self.home)
+                self.command("apply", error="Claude workspace trust")
+                self.assertEqual(before, snapshot(self.home))
+
     def test_claude_restores_writable_settings_and_instructions(self):
         self.command("apply")
         target = self.home / ".claude/CLAUDE.md"

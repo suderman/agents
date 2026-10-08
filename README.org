@@ -212,6 +212,22 @@ instruction content, the adapter saves a private =0600= copy in the destination'
 read/write access ensured, or use =0600= when first created. No credentials,
 caches, or session state enter this checkout.
 
+The Claude adapter also pre-trusts existing =~/src= and =~/org= directories and
+Git repositories beneath them. Paths come from the current user's home directory,
+not a fixed username. Each =agents apply= scans again, so new clones are picked
+up on the next apply. Directory symlinks are not traversed. Worktrees use their
+main checkout's trust entry, as Claude requires. This grants workspace trust to
+projects in those trees, including their project hooks and other startup code.
+
+Trust is separate from =bypassPermissions=. The adapter merges only
+=projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json=, or
+=$CLAUDE_CONFIG_DIR/.claude.json= when set. Existing auth, MCP configuration,
+project history, and other state survive. Before a change, it saves a private
+backup under the Claude destination's =backups/= directory and writes the state
+atomically with mode =0600=. Repeat applies leave unchanged state alone.
+=agents doctor= checks trust without changing it. No live state is copied into
+this repository. See Claude's [[https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust][workspace trust rules]].
+
 =claude/AGENTS.md= holds the existing global instructions. The deployed
 =~/.claude/CLAUDE.md= contains only =@AGENTS.md= because Claude's global user
 instruction loader requires that filename. It imports the adjacent writable
