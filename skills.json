@@ -7,10 +7,22 @@
       "git": "https://github.com/pbakaus/impeccable.git"
     },
     {
+      "path": "skills/ponytail",
+      "ref": "main",
+      "name": "ponytail",
+      "git": "https://github.com/DietrichGebert/ponytail.git"
+    },
+    {
       "path": "skills/systematic-debugging",
       "ref": "main",
       "name": "systematic-debugging",
       "git": "https://github.com/obra/superpowers.git"
+    },
+    {
+      "path": "pstack/skills/unslop",
+      "ref": "main",
+      "name": "unslop",
+      "git": "https://github.com/cursor/plugins.git"
     },
     {
       "path": "skills/web-design-guidelines",

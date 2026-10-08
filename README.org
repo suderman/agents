@@ -15,7 +15,7 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── pi/                 Pi configuration, bootstrap, and task-drop prompts
 ├── opencode/           OpenCode configuration and bootstrap
 ├── hermes/             Hermes configuration and bootstrap
-├── claude/             Claude instructions and managed-entry adapter
+├── claude/             Claude preferences, instructions, and managed-entry adapter
 ├── lib/                resolver and deployment helpers
 ├── tests/              isolated local fixtures
 ├── flake.nix           harness packages
@@ -120,8 +120,12 @@ it also resolves deliberate edits to =skills.json=. These commands do not
 apply runtime configuration. Run =agents apply= afterward.
 
 Current upstream selections are Impeccable, Superpowers' =systematic-debugging=,
-and Vercel's =web-design-guidelines=. The former local name
-=ui-guidelines-review= is retired. No local maintained forks are kept active.
+Vercel's =web-design-guidelines=, [[https://github.com/DietrichGebert/ponytail][Ponytail]], and [[https://github.com/cursor/plugins/tree/main/pstack/skills/unslop][Unslop from Cursor's pstack plugin]].
+The former local name =ui-guidelines-review= is retired. No local maintained
+forks are kept active.
+
+Unslop's upstream skill sets =disable-model-invocation: true=. Harnesses that
+honor this field require explicit invocation rather than automatic selection.
 
 Impeccable's Git skill is pinned, but its launcher may download a separate
 versioned engine into =~/.impeccable/= when used. That engine is not pinned by
@@ -197,13 +201,70 @@ Hermes uses the named =custom:codex-lb= Responses provider, native Camofox brows
 and its native web/vision tools. Services, browser profiles, secrets, and the
 Herdr/Pi launch integration remain separate machine configuration.
 
-Claude refreshes =CLAUDE.md= and records only its own skill links and prompt
-copies in =~/.claude/.agents-managed.json=. It removes deselected entries only
-when they still match that record. If a managed entry was changed locally or a
-native entry occupies its name, apply fails without overwriting it. Rename or
-preserve the conflicting entry explicitly. Existing =settings.json= is validated
-but not replaced; no model, permission policy, credentials, or MCP servers are
-invented. Curated Claude-only commands can live in =claude/commands/=.
+Claude merges =claude/settings.json= into the writable user settings at
+=~/.claude/settings.json=, or under =CLAUDE_CONFIG_DIR= when set. Declared
+preferences win; unrelated keys, hooks, environment variables, plugin options,
+and model selections survive. Per-model effort entries are defaults only:
+existing effort levels and compaction preferences take precedence. Repeat
+applies leave unchanged files in place. Before changing existing settings or
+instruction content, the adapter saves a private =0600= copy in the destination's
+=backups/agents-<filename>.*=. Settings keep their existing mode with owner
+read/write access ensured, or use =0600= when first created. No credentials,
+caches, or session state enter this checkout.
+
+=claude/AGENTS.md= holds the existing global instructions. The deployed
+=~/.claude/CLAUDE.md= contains only =@AGENTS.md= because Claude's global user
+instruction loader requires that filename. It imports the adjacent writable
+=AGENTS.md= copy, without repeating its prose. Project =AGENTS.md= files load
+through Claude's built-in plugin, alongside any existing =CLAUDE.md=. The plugin
+skips instructions already imported or linked by path or content. The adapter
+does not create project =CLAUDE.md= files or install third-party plugins.
+
+Claude records only its own skill links and prompt copies in
+=~/.claude/.agents-managed.json=. It removes deselected entries only when they
+still match that record. If a managed entry was changed locally or a native
+entry occupies its name, apply fails without overwriting it. Rename or preserve
+the conflicting entry explicitly. Curated Claude-only commands can live in
+=claude/commands/=.
+
+*** Claude Code preferences
+
+The declared settings target Claude Code 2.1.291. They use user scope, which is
+required for bypass permissions and built-in plugin options.
+
+- Start in =bypassPermissions=. Use =--permission-mode= or the normal session
+  controls to change modes temporarily. No allowlist or permission wrapper is added.
+- Set =attribution: false= to omit commit trailers, PR attribution, and session
+  links. This shorthand requires 2.1.281 or later; earlier versions need the
+  object with empty =commit= and =pr= strings and =sessionUrl: false=.
+- Use =tui: "fullscreen"= and =CLAUDE_CODE_DISABLE_TERMINAL_TITLE= set to =1=.
+  Pi's existing fullscreen setting remains unchanged.
+- Disable auto memory, built-in Git instructions and the initial Git snapshot,
+  spinner tips, prompt suggestions, and feedback drafts.
+- Retain transcripts for 365 days. Automatic compaction, session history, and
+  file checkpoints remain enabled by default.
+- Use high effort without selecting a model. Top-level =effortLevel= covers
+  older models. User-level preferences for Opus 5.5 and Sonnet 5.5 need canonical
+  =modelSettings= entries. Existing per-model choices survive apply. For later
+  models, run =/effort high= once to save the preference for that model.
+- Enable =cc-plugin-agents-md@builtin= and set its =instructionFiles= option to
+  =claude-md-and-agents-md=. The plugin was renamed in 2.1.285. The old
+  =agents-md@builtin= option key still works, but this configuration uses the
+  installed version's ID.
+
+See Claude's [[https://code.claude.com/docs/en/settings-reference][settings reference]],
+[[https://code.claude.com/docs/en/model-config][model and effort settings]], and
+[[https://code.claude.com/docs/en/memory][instruction loading]]. Run =claude doctor= to check installation and settings,
+and =/memory= in a session to inspect loaded instruction paths. On a new machine,
+start =claude= and complete login and first-run confirmations. Keep auth and
+interactive application state in Claude's writable home, not in this repository.
+Claude may offer auto mode during first run. Choose "No, keep bypass permissions"
+to retain the declared default without disabling later mode changes.
+
+The existing NixOS Home Manager module at
+=/etc/nixos/modules/home/default/options/claude-code.nix= supplies this flake's
+package and persists writable =~/.claude/= and =~/.claude.json=. No new machine
+module or runtime-file declaration is needed for these preferences.
 
 ** Nix packages and machine integration
 

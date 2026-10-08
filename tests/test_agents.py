@@ -75,8 +75,11 @@ class AgentsTests(unittest.TestCase):
             self.native.append(runtime / "skills/native/SKILL.md")
         (self.home / ".claude.json").write_text('{"oauth":"preserve","projects":{}}\n')
         self.native.append(self.home / ".claude.json")
-        (self.home / ".claude/settings.json").write_text('{"runtimeOnly":true}\n')
-        self.native.append(self.home / ".claude/settings.json")
+        (self.home / ".claude/settings.json").write_text(json.dumps({
+            "runtimeOnly": True, "model": "sonnet", "hooks": {"SessionStart": []},
+            "modelSettings": {"claude-opus-5-5": {"effortLevel": "medium"},
+                              "claude-sonnet-5-5": {"autoCompactWindow": "auto"}},
+        }) + "\n")
         self.git(self.root, "init", "-q", "-b", "main")
         self.commit(self.root)
 
@@ -109,11 +112,26 @@ class AgentsTests(unittest.TestCase):
 
     def test_apply_preserves_native_state_and_repeats_without_fetch(self):
         before = self.native_snapshot()
+        old_settings = (self.home / ".claude/settings.json").read_bytes()
         lock = (self.root / "skills.lock").read_bytes()
         result = self.command("apply")
         self.assertIn("Rebuilding community skills", result.stdout)
         self.assertEqual(before, self.native_snapshot())
         self.assertEqual(lock, (self.root / "skills.lock").read_bytes())
+        settings = json.loads((self.home / ".claude/settings.json").read_text())
+        self.assertTrue(settings["runtimeOnly"])
+        self.assertEqual(settings["model"], "sonnet")
+        self.assertEqual(settings["hooks"], {"SessionStart": []})
+        self.assertEqual(settings["permissions"]["defaultMode"], "bypassPermissions")
+        self.assertIs(settings["attribution"], False)
+        self.assertEqual(settings["tui"], "fullscreen")
+        self.assertEqual(settings["modelSettings"]["claude-opus-5-5"]["effortLevel"], "medium")
+        self.assertEqual(settings["modelSettings"]["claude-sonnet-5-5"],
+                         {"effortLevel": "high", "autoCompactWindow": "auto"})
+        backups = list((self.home / ".claude/backups").glob("agents-settings.json.*"))
+        self.assertEqual([p.read_bytes() for p in backups], [old_settings])
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
+        self.assertEqual((self.home / ".claude/CLAUDE.md").read_text(), "@AGENTS.md\n")
         self.assertTrue((self.home / ".claude/skills/personal").is_symlink())
         self.assertEqual(os.readlink(self.home / ".claude/skills/alpha"), str(self.root / "skills/alpha"))
         prompt = (self.home / ".claude/commands/review.md").read_text()
@@ -218,15 +236,18 @@ class AgentsTests(unittest.TestCase):
                 self.assertEqual(before, snapshot(self.home))
                 shutil.rmtree(target)
 
-    def test_claude_restores_writable_instructions(self):
+    def test_claude_restores_writable_settings_and_instructions(self):
         self.command("apply")
         target = self.home / ".claude/CLAUDE.md"
+        settings = self.home / ".claude/settings.json"
         target.chmod(0o444)
+        settings.chmod(0o444)
         before = snapshot(self.home)
         self.command("doctor", error="not writable")
         self.assertEqual(before, snapshot(self.home))
         self.command("apply")
         self.assertEqual(target.stat().st_mode & 0o777, 0o644)
+        self.assertEqual(settings.stat().st_mode & 0o600, 0o600)
 
     def test_claude_native_collision_and_managed_edits_are_preserved(self):
         self.skill(self.home / ".claude/skills/personal", "personal")

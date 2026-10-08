@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deploy instructions and managed skill links without replacing Claude-owned state."""
+"""Merge declared preferences and deploy shared resources, preserving Claude-owned state."""
 
 import hashlib
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deploy import ROOT, destinations, run
+from deploy import ROOT, contains, destinations, run
 
 SOURCE = ROOT / "claude"
 
@@ -34,6 +34,26 @@ def write_copy(target, content, mode=0o644):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def merge(actual, declared):
+    for key, value in declared.items():
+        if isinstance(value, dict) and isinstance(actual.get(key), dict):
+            merge(actual[key], value)
+        else:
+            actual[key] = value
+    return actual
+
+
+def preserve(target):
+    if not target.exists():
+        return
+    backups = target.parent / "backups"
+    backups.mkdir(mode=0o700, exist_ok=True)
+    fd, backup = tempfile.mkstemp(prefix=f"agents-{target.name}.", dir=backups)
+    with os.fdopen(fd, "wb") as output:
+        output.write(target.read_bytes())
+    print(f"Claude preserved {target} at {backup}")
 
 
 def plan(destination):
@@ -98,14 +118,21 @@ def plan(destination):
         name = match[1] if match else path.parent.name
         if name in selected or name in {Path(n).stem for n in commands}:
             raise ValueError(f"Claude native skill name collision: {name} at {path}")
+    declared = json.loads((SOURCE / "settings.json").read_text())
+    # Per-model effort preferences are defaults, not overrides of interactive choices.
+    settings = {"modelSettings": declared.pop("modelSettings")}
+    current = destination / "settings.json"
+    if current.exists():
+        merge(settings, json.loads(current.read_text()))
+    merge(settings, declared)
     state = {"skills": selected, "commands": {n: hashlib.sha256(b).hexdigest() for n, b in commands.items()}}
-    return selected, commands, previous, state
+    return selected, commands, previous, state, settings
 
 
 def main():
     destination = destinations()["claude"]
     try:
-        selected, commands, previous, state = plan(destination)
+        selected, commands, previous, state, settings = plan(destination)
         if sys.argv[1:] == ["--check"]:
             return
         for name, source in selected.items():
@@ -114,10 +141,15 @@ def main():
         if sys.argv[1:] == ["--verify"]:
             if json.loads((destination / ".agents-managed.json").read_text()) != state:
                 raise ValueError("Claude managed-entry record differs from deployment")
-            instructions = destination / "CLAUDE.md"
-            if (instructions.is_symlink() or instructions.read_bytes() != (SOURCE / "CLAUDE.md").read_bytes()
-                    or instructions.stat().st_mode & 0o777 != 0o644):
-                raise ValueError("Claude instructions differ from source or are not writable")
+            config = destination / "settings.json"
+            if (config.is_symlink() or config.stat().st_mode & 0o600 != 0o600
+                    or not contains(json.loads(config.read_text()), settings)):
+                raise ValueError("Claude settings differ from declared preferences or are not writable copies")
+            for name in ["CLAUDE.md", "AGENTS.md"]:
+                instructions = destination / name
+                if (instructions.is_symlink() or instructions.read_bytes() != (SOURCE / name).read_bytes()
+                        or instructions.stat().st_mode & 0o777 != 0o644):
+                    raise ValueError("Claude instructions differ from source or are not writable")
             for name, source in selected.items():
                 target = destination / "skills" / name
                 if not target.is_symlink() or os.readlink(target) != source:
@@ -128,6 +160,19 @@ def main():
             return
         if sys.argv[1:]:
             raise ValueError("use bootstrap [--check|--verify]")
+        destination.mkdir(parents=True, exist_ok=True)
+        config = destination / "settings.json"
+        if (not config.exists() or json.loads(config.read_text()) != settings or config.is_symlink()
+                or config.stat().st_mode & 0o600 != 0o600):
+            preserve(config)
+            mode = (config.stat().st_mode & 0o777 | 0o600) if config.exists() else 0o600
+            write_copy(config, (json.dumps(settings, indent=2) + "\n").encode(), mode)
+        for name in ["CLAUDE.md", "AGENTS.md"]:
+            target = destination / name
+            content = (SOURCE / name).read_bytes()
+            if target.exists() and (target.is_symlink() or target.read_bytes() != content):
+                preserve(target)
+            write_copy(target, content)
         for group, desired in [("skills", selected), ("commands", commands)]:
             (destination / group).mkdir(parents=True, exist_ok=True)
             for name in previous[group].keys() - desired.keys():
@@ -143,7 +188,6 @@ def main():
             target.symlink_to(source)
         for name, content in commands.items():
             write_copy(destination / "commands" / name, content)
-        write_copy(destination / "CLAUDE.md", (SOURCE / "CLAUDE.md").read_bytes())
         write_copy(destination / ".agents-managed.json", (json.dumps(state, indent=2) + "\n").encode())
     except (OSError, ValueError) as error:
         sys.exit(f"claude bootstrap: {error}")
