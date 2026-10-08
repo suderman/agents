@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+package_dir="${1:?Pass the built Pi package path}/lib/node_modules/@earendil-works/pi-coding-agent"
+IFS= read -r node < "$package_dir/dist/cli.js"
+node="${node#\#!}"
+export PI_PACKAGE_DIR="$package_dir"
+
+"$node" --input-type=module - <<'JS'
+import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
+
+const fixture = mkdtempSync(join(tmpdir(), "pi-clipboard-test-"));
+try {
+    // Mock native tools so no test reads or changes a real desktop clipboard.
+    writeFileSync(join(fixture, "wl-copy"), `#!${process.execPath}
+const fs = require("node:fs");
+fs.writeFileSync(process.env.COPY_RECORD, fs.readFileSync(0));
+`, { mode: 0o755 });
+    const chunks = `${process.env.PI_PACKAGE_DIR}/dist/bundle/chunks`;
+    const clipboardChunks = readdirSync(chunks).filter(name => name.endsWith(".js") &&
+        readFileSync(join(chunks, name), "utf8").includes("async function copyToClipboard(text){"));
+    assert.equal(clipboardChunks.length, 1, "Expected one bundled clipboard implementation");
+    const modules = [
+        `${process.env.PI_PACKAGE_DIR}/dist/utils/clipboard.js`,
+        join(chunks, clipboardChunks[0]),
+    ];
+    let modulePath;
+    const text = "Cog reachable now · 日本語";
+    const osc52 = `\x1b]52;c;${Buffer.from(text).toString("base64")}\x07`;
+    function check(name, env, input, expectedOsc, native, error = "") {
+        const record = join(fixture, name);
+        const result = spawnSync(process.execPath, ["--input-type=module", "-e", `
+            import { copyToClipboard } from ${JSON.stringify(modulePath)};
+            let text = "";
+            for await (const chunk of process.stdin) text += chunk;
+            await copyToClipboard(text);
+        `], {
+            input,
+            encoding: "utf8",
+            env: { PATH: fixture, HOME: fixture, COPY_RECORD: record, ...env },
+            timeout: 10000,
+        });
+        assert.equal(result.error, undefined, name);
+        assert.equal(result.status, error ? 1 : 0, `${name}: ${result.stderr}`);
+        assert.equal(result.stdout, expectedOsc, name);
+        if (native) assert.equal(readFileSync(record, "utf8"), input, name);
+        else assert.throws(() => readFileSync(record), { code: "ENOENT" }, name);
+        if (error) assert(result.stderr.includes(error), `${name}: ${result.stderr}`);
+        console.log(`${name}: passed`);
+    }
+    const desktop = { WAYLAND_DISPLAY: "wayland-1", DISPLAY: ":0" };
+    for (modulePath of modules) {
+        console.log(`Checking ${modulePath}`);
+        check("local", desktop, text, "", true);
+        check("herdr", { ...desktop, HERDR_ENV: "1" }, text, osc52, false);
+        check("herdr-disabled", { ...desktop, HERDR_ENV: "0" }, text, "", true);
+        check("ssh", { ...desktop, SSH_CONNECTION: "test" }, text, osc52, true);
+        check("headless", {}, text, osc52, false);
+        check("herdr-oversized", { ...desktop, HERDR_ENV: "1" }, "x".repeat(75001), "", false,
+            "Clipboard unavailable: text exceeds the OSC 52 size limit");
+    }
+    console.log("Clipboard routing checks passed.");
+} finally {
+    rmSync(fixture, { recursive: true, force: true });
+}
+JS

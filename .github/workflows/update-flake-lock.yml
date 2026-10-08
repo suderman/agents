@@ -51,6 +51,7 @@ jobs:
           env -i PATH="$PATH" HOME="$fixture/pi" \
             "$(nix eval --raw .#pi.outPath)/bin/pi" --version
           HOME="$fixture/pi" pi/test-codemode "$(nix eval --raw .#pi.outPath)"
+          pi/test-clipboard "$(nix eval --raw .#pi.outPath)"
           env -i PATH="$PATH" HOME="$fixture/opencode" \
             "$(nix eval --raw .#opencode.outPath)/bin/opencode" --version
           env -i PATH="$PATH" HOME="$fixture/hermes" \
