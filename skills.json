@@ -7,12 +7,6 @@
       "git": "https://github.com/pbakaus/impeccable.git"
     },
     {
-      "path": "skills/ponytail",
-      "ref": "main",
-      "name": "ponytail",
-      "git": "https://github.com/DietrichGebert/ponytail.git"
-    },
-    {
       "path": "skills/systematic-debugging",
       "ref": "main",
       "name": "systematic-debugging",

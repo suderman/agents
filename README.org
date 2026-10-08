@@ -120,7 +120,7 @@ it also resolves deliberate edits to =skills.json=. These commands do not
 apply runtime configuration. Run =agents apply= afterward.
 
 Current upstream selections are Impeccable, Superpowers' =systematic-debugging=,
-Vercel's =web-design-guidelines=, [[https://github.com/DietrichGebert/ponytail][Ponytail]], and [[https://github.com/cursor/plugins/tree/main/pstack/skills/unslop][Unslop from Cursor's pstack plugin]].
+Vercel's =web-design-guidelines=, and [[https://github.com/cursor/plugins/tree/main/pstack/skills/unslop][Unslop from Cursor's pstack plugin]].
 The former local name =ui-guidelines-review= is retired. No local maintained
 forks are kept active.
 

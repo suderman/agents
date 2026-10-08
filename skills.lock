@@ -8,13 +8,6 @@
       "revision": "2a26f1c50b9c4f86d10c0fec8f74cf523a2236e7"
     },
     {
-      "path": "skills/ponytail",
-      "ref": "main",
-      "name": "ponytail",
-      "git": "https://github.com/DietrichGebert/ponytail.git",
-      "revision": "552acd5efd0aeae2583a12efe39373d2f076f25e"
-    },
-    {
       "path": "skills/systematic-debugging",
       "ref": "main",
       "name": "systematic-debugging",
