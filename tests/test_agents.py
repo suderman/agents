@@ -122,8 +122,8 @@ class AgentsTests(unittest.TestCase):
         self.assertTrue(settings["runtimeOnly"])
         self.assertEqual(settings["model"], "sonnet")
         self.assertEqual(settings["hooks"], {"SessionStart": []})
-        self.assertEqual(settings["permissions"]["defaultMode"], "bypassPermissions")
-        self.assertIs(settings["attribution"], False)
+        self.assertEqual(settings["permissions"]["defaultMode"], "auto")
+        self.assertEqual(settings["attribution"], {"commit": "", "pr": "", "sessionUrl": False})
         self.assertEqual(settings["tui"], "fullscreen")
         self.assertEqual(settings["modelSettings"]["claude-opus-5-5"]["effortLevel"], "medium")
         self.assertEqual(settings["modelSettings"]["claude-sonnet-5-5"],

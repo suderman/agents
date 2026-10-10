@@ -219,7 +219,7 @@ up on the next apply. Directory symlinks are not traversed. Worktrees use their
 main checkout's trust entry, as Claude requires. This grants workspace trust to
 projects in those trees, including their project hooks and other startup code.
 
-Trust is separate from =bypassPermissions=. The adapter merges only
+Trust is separate from the permission mode. The adapter merges only
 =projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json=, or
 =$CLAUDE_CONFIG_DIR/.claude.json= when set. Existing auth, MCP configuration,
 project history, and other state survive. Before a change, it saves a private
@@ -245,14 +245,14 @@ the conflicting entry explicitly. Curated Claude-only commands can live in
 
 *** Claude Code preferences
 
-The declared settings target Claude Code 2.1.291. They use user scope, which is
-required for bypass permissions and built-in plugin options.
+The declared settings target Claude Code 2.1.291. They use user scope, which
+built-in plugin options require.
 
-- Start in =bypassPermissions=. Use =--permission-mode= or the normal session
-  controls to change modes temporarily. No allowlist or permission wrapper is added.
-- Set =attribution: false= to omit commit trailers, PR attribution, and session
-  links. This shorthand requires 2.1.281 or later; earlier versions need the
-  object with empty =commit= and =pr= strings and =sessionUrl: false=.
+- Start in =auto= mode. Use =--permission-mode= or the normal session controls
+  to change modes temporarily. No allowlist or permission wrapper is added.
+- Set =attribution= to empty =commit= and =pr= strings and =sessionUrl: false=
+  to omit commit trailers, PR attribution, and session links. This is the form
+  Claude stores; =attribution: false= is equivalent on 2.1.281 or later.
 - Use =tui: "fullscreen"= and =CLAUDE_CODE_DISABLE_TERMINAL_TITLE= set to =1=.
   Pi's existing fullscreen setting remains unchanged.
 - Disable auto memory, built-in Git instructions and the initial Git snapshot,
@@ -274,8 +274,6 @@ See Claude's [[https://code.claude.com/docs/en/settings-reference][settings refe
 and =/memory= in a session to inspect loaded instruction paths. On a new machine,
 start =claude= and complete login and first-run confirmations. Keep auth and
 interactive application state in Claude's writable home, not in this repository.
-Claude may offer auto mode during first run. Choose "No, keep bypass permissions"
-to retain the declared default without disabling later mode changes.
 
 The existing NixOS Home Manager module at
 =/etc/nixos/modules/home/default/options/claude-code.nix= supplies this flake's

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Merge declared preferences and deploy shared resources, preserving Claude-owned state."""
 
+import errno
 import hashlib
 import json
 import os
@@ -26,7 +27,15 @@ def write_copy(target, content, mode=0o644):
         with os.fdopen(fd, "wb") as output:
             output.write(content)
         os.chmod(temporary, mode)
-        os.replace(temporary, target)
+        try:
+            os.replace(temporary, target)
+        except OSError as error:
+            # Persisted files such as ~/.claude.json are bind mounts, which rename cannot replace.
+            if error.errno != errno.EBUSY or target.is_symlink() or not target.is_file():
+                raise
+            with open(target, "wb") as output:
+                output.write(content)
+            os.chmod(target, mode)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
