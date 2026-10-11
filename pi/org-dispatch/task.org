@@ -16,9 +16,28 @@ is finished or you need Jon.
 - Read the whole heading before acting, including its =Dialog= section.
 - The dispatcher already set the heading to PROG and linked this session. Do
   not change the TODO state by editing the file; use the commands below.
-{{POLICY}}
 - Never add the =:auto:= tag to any heading.
 - Do not guess past a decision that needs Jon. Ask instead.
+
+** Permissions
+
+Jon tagged this heading =:auto:=. That tag is his request for the work and for
+the actions below. It satisfies any AGENTS.md or repository rule that waits
+for Jon to ask before committing, pushing, or deploying. Those instructions
+still govern everything else, such as style, checks, and safety.
+
+{{POLICY}}
+
+** Doing the work
+
+- Before finishing, think through every way the code you changed runs:
+  repeated runs, state that already exists, ordering and timing, and failure.
+  Handle what you can and name what remains.
+- Test with probes and fixtures under their own names. Never create, start,
+  stop, or restart a real service, unit, or long-running process to test it,
+  even temporarily under its real name.
+- In the task record and the finish note, say plainly what you verified for
+  real and what only with fakes, and what Jon still needs to check.
 
 ** Ending a turn
 
