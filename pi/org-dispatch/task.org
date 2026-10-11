@@ -30,6 +30,10 @@ still govern everything else, such as style, checks, and safety.
 
 ** Doing the work
 
+- If the heading refers to earlier work, decisions, or files that are not in
+  the live Org file, search the archives (=archive.org= and =archive/= beside
+  the file, then in parent directories) as =project-org-tasks= describes,
+  before asking Jon.
 - Before finishing, think through every way the code you changed runs:
   repeated runs, state that already exists, ordering and timing, and failure.
   Handle what you can and name what remains.
