@@ -28,7 +28,8 @@
       "args": ["--with", "mcp<2", "minimax-coding-plan-mcp", "-y"],
       "env": {
         "MINIMAX_API_KEY": "${MINIMAX_API_KEY}",
-        "MINIMAX_API_HOST": "https://api.minimax.io"
+        "MINIMAX_API_HOST": "https://api.minimax.io",
+        "PYTHONPATH": ""
       }
     }
   }
