@@ -12,6 +12,9 @@ Before substantive work, look for an existing project under `~/org/work/`.
 When one exists, load `project-org-tasks`, resume its task, and keep that Org
 record current. Do not create repository-local planning files as a substitute.
 
+In Org headings, put one space between the title and its tags. Do not pad
+tags to a column.
+
 Use `~/profile/skills` for personal authored skills and `~/profile/prompts` for
 personal commands. Ask before editing them. `~/.agents/skills` is generated
 community content. Change its selections through `~/.agents/agents skill`,

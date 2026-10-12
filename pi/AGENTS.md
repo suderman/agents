@@ -25,6 +25,7 @@ Before substantive work, check for a matching Org project under `~/org/work/`. D
 - Try before asking. If you wonder whether a tool exists, run it. If it fails, report that and suggest a fix.
 - Investigate before fixing. Read the full error, confirm a hypothesis, then fix the root cause.
 - Check as you go. Before saying "fixed" or "tests pass", run the check and show the command and output. "Should work now" is a guess, not a result.
+- In Org headings, put one space between the title and its tags. Do not pad tags to a column.
 - Clean up what you created: debug logs, experiments, temp files. Keep supplied project and task materials.
 - Delegate only when the user asks. "Ask Claude" or "give Claude a task" means load `ask-claude`. Use `claude-browser` only when the user names claude.ai or a Project.
 
