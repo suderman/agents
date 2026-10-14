@@ -12,7 +12,7 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── skills.json         community skill selections
 ├── skills.lock         exact upstream Git commits
 ├── skills/             generated community content, ignored by Git
-├── pi/                 Pi configuration, bootstrap, task-drop and org-dispatch prompts
+├── pi/                 Pi configuration, bootstrap, org-dispatch prompts
 ├── opencode/           OpenCode configuration and bootstrap
 ├── hermes/             Hermes configuration and bootstrap
 ├── claude/             Claude preferences, instructions, and managed-entry adapter
