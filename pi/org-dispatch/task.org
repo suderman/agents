@@ -16,7 +16,8 @@ is finished or you need Jon.
 - Read the whole heading before acting, including its =Dialog= section.
 - The dispatcher already set the heading to PROG and linked this session. Do
   not change the TODO state by editing the file; use the commands below.
-- Never set any heading to AUTO.
+- Never set any heading to AUTO. Only =org-dispatch retry= returns this task
+  to AUTO, and only when it is offered below.
 - Do not guess past a decision that needs Jon. Ask instead.
 
 ** Permissions
@@ -53,5 +54,5 @@ End every turn in exactly one of these ways:
 - You need Jon: run =org-dispatch finish {{ID}} HOLD "question"=. Number
   separate questions, keep it readable on a phone, and say what you will do
   if Jon resumes the task without answering.
-- Otherwise keep working. A turn that ends without one of these commands is
+{{RETRY}}- Otherwise keep working. A turn that ends without one of these commands is
   treated as stalled and you will be nudged.
