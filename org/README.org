@@ -1,0 +1,94 @@
+* Org agent system
+
+Jon's Org files assign work to agents. This directory holds the source for
+that system: the dispatcher, its prompts, the Herdr session-link tool, and
+the skills that tell agents how to keep the Org record.
+
+#+begin_src text
+org/
+├── dispatch/org-dispatch.el   dispatcher, run by Emacs in batch
+├── dispatch/org-dispatch      command-line wrapper
+├── prompts/                   task.org and nudge.org, sent to pi
+├── bin/herdr-link             stamp and follow herdr: links
+├── skills/                    project-org-tasks, org-triage
+└── tests/test-org-dispatch    batch tests with fixtures
+#+end_src
+
+** Where each piece runs
+
+=suderman/nixos= pins this repository as the =agents= flake input and wraps
+these files, as it does for =suderman/edger=:
+
+- =org-dispatch.nix= builds the =org-dispatch= command, sets
+  =ORG_DISPATCH_EL= and =ORG_DISPATCH_PROMPTS= to the pinned copies, and runs
+  it every minute with a systemd user timer.
+- =herdr.nix= builds =herdr-link= with its runtime tools.
+
+The dispatcher therefore always runs with the prompts from the same commit,
+and rolling back the system rolls both back. Changing either one needs an
+input update and a rebuild. To test local changes before pushing:
+
+#+begin_src sh
+sudo nixos-rebuild switch --flake /etc/nixos#$(hostname) --override-input agents path:$HOME/.agents
+#+end_src
+
+The skills are different. =~/profile/skills/project-org-tasks= and
+=org-triage= are symlinks into this checkout, so skill edits apply at once.
+Rebuild before publishing skill text that describes a new command.
+
+=suderman/emacs= keeps its own copy of the TODO keywords and the =herdr:=
+link handler, because Emacs on Android has neither this checkout nor the
+dispatcher. Change both copies of the keywords together.
+
+** The contract
+
+States, set in =org-todo-keywords= both here and in =suderman-org.el=:
+
+| State | Meaning                                                       |
+|-------+---------------------------------------------------------------|
+| TODO  | Jon's task                                                    |
+| AUTO  | Jon asks an agent to do it; its own sequence, never cycled to |
+| PROG  | an agent or Jon is working on it                              |
+| EVAL  | ready for Jon to review                                       |
+| HOLD  | waiting, usually on Jon's answer in =Dialog=                  |
+| DONE  | finished                                                      |
+
+A task is an AUTO heading in Jon's agenda files with exactly one host tag
+(=:kit:= or =:cog:=), on the heading or in =#+FILETAGS=. =SCHEDULED= delays
+it and a repeater makes it recur. Properties adjust a run:
+
+| Property  | Default          | Effect                                      |
+|-----------+------------------+---------------------------------------------|
+| REVIEW    | yes              | =no= lets the agent finish DONE             |
+| DEPLOY    | no               | =yes= allows deploying                      |
+| BRANCH    | current          | push to this branch                         |
+| MODEL     | pi's default     | pi model                                    |
+| DIR       | project checkout | working directory                           |
+| RETRY     | 0                | times the agent may reschedule a one-off    |
+
+The dispatcher adds =REPEAT_TO_STATE: AUTO= to repeating tasks so they
+return to AUTO, not TODO.
+
+Agents end each turn with one of:
+
+#+begin_src sh
+org-dispatch finish ID EVAL|HOLD|DONE "note"   # HOLD needs a question
+org-dispatch retry ID WHEN "what it waits for" # only when RETRY > 0
+#+end_src
+
+Only Jon sets AUTO. =retry= is the one exception: it returns a task Jon
+allowed to retry to AUTO, lowers =RETRY=, and schedules it for =WHEN=, at
+least 15 minutes away.
+
+Runtime state lives in =~/.local/state/org-dispatch= on each host and is
+not synced. Repeating tasks keep 14 run entries in =:LOGBOOK:=; older ones
+move to =archive.org= beside the task's file.
+
+** Tests
+
+#+begin_src sh
+org/tests/test-org-dispatch
+#+end_src
+
+The test needs =emacs= on =PATH= and uses temporary Org files and state. A
+fake =herdr= that always fails keeps it away from any running server.
