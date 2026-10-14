@@ -345,6 +345,34 @@ reaches 0 the agent must use `HOLD`.
 - The body of a repeating task is standing instructions. Do not add `Scope`,
   `Checklist`, or other sections to it; each run is logged in `:LOGBOOK:`.
 
+## Asana tasks
+
+`~/org/asana.org` mirrors Jon's open Asana tasks. A sync on kit rebuilds every
+open task from Asana on each run, and marking one of its headings `DONE`
+completes that task in Asana, where clients see it.
+
+- Never edit `asana.org`. Text under an open task is lost on the next sync,
+  and a state change publishes to Asana. Only Jon closes those headings.
+- Track an Asana task in its project file under a first-level heading with no
+  TODO keyword, tagged `:asana:`, so the Agenda lists the task once. Link the
+  entry by its ID, which is `asana-` followed by its `:ASANA_ID:`:
+
+  ```org
+  * Revisions to EVF Calculator :asana:
+  [[id:asana-1219507563660411][Asana task]]
+  ```
+
+- Asana owns the title, deadline, description, and state. Read the linked entry
+  before working, and refer to it rather than copying it. Its `Project:` line
+  helps place the heading.
+- Scope, checklist, notes, sections, and task directories go under the project
+  heading as for any thread. Work that needs a state goes in a child heading:
+  where "Start or resume work" says to mark a thread `PROG`, mark a child
+  instead. Jon may set `AUTO` on a child; a dispatched agent reads the parent
+  heading and the linked entry for context.
+- When the child work is verified, set its state as usual and tell Jon the
+  Asana task looks ready to close.
+
 ## Restraint
 
 Prefer a small, accurate record over ceremonial project management. Capture a
