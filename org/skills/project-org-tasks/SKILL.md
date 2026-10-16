@@ -314,7 +314,7 @@ finish` moves that run's links into `:LOGBOOK:` and removes the section.
 ## Autonomous tasks
 
 An `AUTO` heading in one of Jon's agenda files (`org-agenda-files`), tagged
-with one host (`:kit:` or `:cog:`, on the heading or in `#+FILETAGS`), is run
+with one host (`:kit:`, `:cog:`, or `:lux:`, on the heading or in `#+FILETAGS`), is run
 unattended by `org-dispatch` on that host once its text has stopped changing for
 `org-dispatch-settle`; `org-dispatch scan` shows what that host would launch
 now. `SCHEDULED` delays it and a repeater makes it recur. Jon adjusts a run with the

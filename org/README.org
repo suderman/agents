@@ -54,7 +54,7 @@ States, set in =org-todo-keywords= both here and in =suderman-org.el=:
 | DONE  | finished                                                      |
 
 A task is an AUTO heading in Jon's agenda files with exactly one host tag
-(=:kit:= or =:cog:=), on the heading or in =#+FILETAGS=. =SCHEDULED= delays
+(=:kit:=, =:cog:=, or =:lux:=), on the heading or in =#+FILETAGS=. =SCHEDULED= delays
 it and a repeater makes it recur. Properties adjust a run:
 
 | Property  | Default          | Effect                                      |

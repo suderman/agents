@@ -23,7 +23,7 @@
 (defvar org-dispatch-host
   (org-dispatch--env "ORG_DISPATCH_HOST" (car (split-string (system-name) "\\."))))
 (defvar org-dispatch-hosts
-  (split-string (org-dispatch--env "ORG_DISPATCH_HOSTS" "kit cog")))
+  (split-string (org-dispatch--env "ORG_DISPATCH_HOSTS" "kit cog lux")))
 (defvar org-dispatch-root
   (expand-file-name (org-dispatch--env "ORG_DISPATCH_ROOT" "~/org/work"))
   "Directory scanned when Jon's Emacs config cannot list agenda files.")
