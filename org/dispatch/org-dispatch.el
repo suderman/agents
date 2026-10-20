@@ -122,6 +122,26 @@
                    (org-dispatch--get agent 'pane_id)))
             (org-dispatch--get (org-dispatch--herdr "agent" "list") 'result 'agents)))
 
+(defun org-dispatch--auto-pane (dir label)
+  "Open a tab named LABEL in DIR in the AUTO workspace and return its root pane.
+Create the workspace when it is missing; its first tab then hosts the task."
+  (let* ((workspace (seq-some (lambda (ws)
+                                (and (string-match-p "\\`\\(?:\\[[0-9]+\\] \\)?AUTO\\'"
+                                                     (or (alist-get 'label ws) ""))
+                                     (alist-get 'workspace_id ws)))
+                              (org-dispatch--get (org-dispatch--herdr "workspace" "list")
+                                                 'result 'workspaces)))
+         (pane (org-dispatch--get
+                (if workspace
+                    (org-dispatch--herdr "tab" "create" "--workspace" workspace "--cwd" dir
+                                         "--label" label "--no-focus")
+                  (org-dispatch--herdr "workspace" "create" "--cwd" dir
+                                       "--label" "AUTO" "--no-focus"))
+                'result 'root_pane)))
+    (unless workspace
+      (org-dispatch--herdr "tab" "rename" (alist-get 'tab_id pane) label))
+    pane))
+
 (defun org-dispatch--session-file (uuid)
   (car (append (file-expand-wildcards
                 (format "~/.local/state/pi/sessions/*/*_%s.jsonl" uuid) t)
@@ -528,7 +548,7 @@ with NOTE, moving the Sessions links into it, then trim the log."
          (task (plist-put (copy-sequence task) :id id))
          (resume (plist-get task :session))
          (pane (and resume (org-dispatch--live-pane resume)))
-         (workspace nil)
+         (tab nil)
          (label (truncate-string-to-width (concat "auto · " (plist-get task :heading)) 60))
          (state (list :id id :file (plist-get task :file) :heading (plist-get task :heading)
                       :dir (plist-get task :dir) :status "starting"
@@ -538,10 +558,11 @@ with NOTE, moving the Sessions links into it, then trim the log."
     (condition-case err
         (progn
           (unless pane
-            (let ((created (org-dispatch--herdr "workspace" "create" "--cwd" (plist-get task :dir)
-                                                "--label" label "--no-focus")))
-              (setq pane (org-dispatch--get created 'result 'root_pane 'pane_id)
-                    workspace (org-dispatch--get created 'result 'workspace 'workspace_id)))
+            (let ((created (org-dispatch--auto-pane
+                            (plist-get task :dir)
+                            (truncate-string-to-width (plist-get task :heading) 40))))
+              (setq pane (alist-get 'pane_id created)
+                    tab (alist-get 'tab_id created)))
             (apply #'org-dispatch--herdr "agent" "start"
                    (format "auto-%s-%s"
                            (substring (replace-regexp-in-string "[^0-9a-f]" "" id) 0 8)
@@ -555,7 +576,7 @@ with NOTE, moving the Sessions links into it, then trim the log."
           (let ((session (org-dispatch--pane-session pane)))
             (org-dispatch--claim task pane session)
             (setq state (plist-put state :pane pane))
-            (setq state (plist-put state :workspace (or workspace "")))
+            (setq state (plist-put state :tab (or tab "")))
             (setq state (plist-put state :session session))
             (setq state (plist-put state :status "running"))
             (org-dispatch--save-state state)
@@ -604,11 +625,16 @@ with NOTE, moving the Sessions links into it, then trim the log."
          (nudges (plist-get state :nudges)))
     (cond
      ((equal (plist-get state :status) "finished")
-      ;; Close workspaces this dispatcher opened once their work is accepted.
+      ;; Close tabs this dispatcher opened once their work is accepted. Older
+      ;; runs recorded a whole workspace instead.
       (unless (member status '("working" "blocked"))
-        (when (and (member todo '("DONE" "AUTO"))
-                   (not (string-empty-p (or (plist-get state :workspace) ""))))
-          (ignore-errors (org-dispatch--herdr "workspace" "close" (plist-get state :workspace))))
+        (when (member todo '("DONE" "AUTO"))
+          (let ((tab (or (plist-get state :tab) ""))
+                (workspace (or (plist-get state :workspace) "")))
+            (cond ((not (string-empty-p tab))
+                   (ignore-errors (org-dispatch--herdr "tab" "close" tab)))
+                  ((not (string-empty-p workspace))
+                   (ignore-errors (org-dispatch--herdr "workspace" "close" workspace))))))
         (org-dispatch--drop-state id)))
      ((not (equal (plist-get state :status) "running"))
       ;; A launch that died part way leaves a "starting" entry behind.
