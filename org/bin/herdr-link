@@ -5,6 +5,8 @@ set -euo pipefail
 #
 #   herdr-link stamp        print an Org link for the calling Herdr pane
 #   herdr-link jump LINK    focus the pane for LINK, resuming the session if needed
+#   herdr-link attach LINK  attach this terminal to that pane, resuming likewise
+#   herdr-link pick         choose a live agent on this host and attach to it
 #
 # LINK is [herdr:]HOST/AGENT:SESSION[@PANE]. SESSION is the Claude session ID or
 # the Pi session UUID. PANE is only a fallback hint; the session finds the pane.
@@ -120,8 +122,9 @@ show() {
   sleep 0.3
 }
 
-jump() {
-  local link=${1#herdr:} rest target tab new cwd cmd name=
+parse() {
+  local rest
+  link=${1#herdr:}
   pane=
   host=${link%%/*}
   rest=${link#*/}
@@ -134,9 +137,18 @@ jump() {
   [[ $link == */* && $rest == *:* && -n $host && -n $agent && -n $session ]] || die "bad link: $1"
   remote=
   [[ $host == "$(</proc/sys/kernel/hostname)" ]] || remote=1
+}
 
-  target=$(on_host herdr agent list | jq -r --arg a "$agent" --arg s "$session" '
-    first(.result.agents[] | select(.agent_session.agent == $a and (.agent_session.value | contains($s))) | .pane_id) // empty')
+# Print the pane running the link's session, if any.
+live_pane() {
+  on_host herdr agent list | jq -r --arg a "$agent" --arg s "$session" '
+    first(.result.agents[] | select(.agent_session.agent == $a and (.agent_session.value | contains($s))) | .pane_id) // empty'
+}
+
+jump() {
+  local link target tab new cwd cmd name=
+  parse "$1"
+  target=$(live_pane)
   if [[ -z $target && -n $pane ]]; then
     tab=$(on_host herdr pane get "$pane" 2>/dev/null | jq -r '.result.pane.tab_id // empty') || true
   fi
@@ -153,8 +165,59 @@ jump() {
   fi
 }
 
+# Attach this terminal to one agent pane, as over ssh from a phone. Detaching
+# leaves the agent running and the desktop layout as it was.
+attach_pane() {
+  exec env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
+    herdr agent attach "$1"
+}
+
+attach() {
+  local link target new cwd cmd name=
+  parse "$1"
+  # Attaching needs a terminal on the link's host, so hand the link to it.
+  [[ -z $remote ]] || exec ssh -t "$host" "$(printf '%q ' herdr-link attach "$1")"
+  target=$(live_pane)
+  if [[ -z $target ]]; then
+    find_session
+    new=$(open_tab "$cwd")
+    herdr pane run "$new" "$cmd" >/dev/null
+    # Herdr attaches only to a pane it has detected an agent in.
+    for _ in {1..40}; do
+      target=$(live_pane)
+      [[ -z $target ]] || break
+      sleep 0.25
+    done
+    [[ -n $target ]] || die "resumed $agent:$session in $new but Herdr has not detected it"
+  fi
+  attach_pane "$target"
+}
+
+# Choose a live agent on this host from a numbered list and attach to it.
+pick() {
+  local rows
+  rows=$(jq -rn --argjson ws "$(herdr workspace list)" --argjson tabs "$(herdr tab list)" \
+    --argjson agents "$(herdr agent list)" '
+    def bare: sub("^\\[[0-9]+\\] "; "");
+    ($ws.result.workspaces | map({key: .workspace_id, value: (.label | bare)}) | from_entries) as $w
+    | ($tabs.result.tabs | map({key: .tab_id, value: (.label | bare)}) | from_entries) as $t
+    | $agents.result.agents[]
+    | [.pane_id, "\($w[.workspace_id]) / \($t[.tab_id]) · \(.agent) · \(.agent_status) · \(.cwd | sub("^/home/[^/]+"; "~"))"]
+    | @tsv')
+  [[ -n $rows ]] || die "no agents running"
+  mapfile -t panes < <(cut -f1 <<<"$rows")
+  mapfile -t labels < <(cut -f2 <<<"$rows")
+  PS3="agent: "
+  select _choice in "${labels[@]}"; do
+    [[ -n ${REPLY//[^0-9]/} && $REPLY -ge 1 && $REPLY -le ${#panes[@]} ]] &&
+      attach_pane "${panes[REPLY - 1]}"
+  done
+}
+
 case ${1:-} in
   stamp) stamp ;;
   jump) [[ $# -eq 2 ]] || die "usage: herdr-link jump LINK"; jump "$2" ;;
-  *) die "usage: herdr-link stamp | herdr-link jump LINK" ;;
+  attach) [[ $# -eq 2 ]] || die "usage: herdr-link attach LINK"; attach "$2" ;;
+  pick) pick ;;
+  *) die "usage: herdr-link stamp | herdr-link jump LINK | herdr-link attach LINK | herdr-link pick" ;;
 esac
