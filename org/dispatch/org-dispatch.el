@@ -123,10 +123,10 @@
             (org-dispatch--get (org-dispatch--herdr "agent" "list") 'result 'agents)))
 
 (defun org-dispatch--auto-pane (dir label)
-  "Open a tab named LABEL in DIR in the AUTO workspace and return its root pane.
+  "Open a tab named LABEL in DIR in the auto workspace and return its root pane.
 Create the workspace when it is missing; its first tab then hosts the task."
   (let* ((workspace (seq-some (lambda (ws)
-                                (and (string-match-p "\\`\\(?:\\[[0-9]+\\] \\)?AUTO\\'"
+                                (and (string-match-p "\\`\\(?:\\[[0-9]+\\] \\)?auto\\'"
                                                      (or (alist-get 'label ws) ""))
                                      (alist-get 'workspace_id ws)))
                               (org-dispatch--get (org-dispatch--herdr "workspace" "list")
@@ -136,7 +136,7 @@ Create the workspace when it is missing; its first tab then hosts the task."
                     (org-dispatch--herdr "tab" "create" "--workspace" workspace "--cwd" dir
                                          "--label" label "--no-focus")
                   (org-dispatch--herdr "workspace" "create" "--cwd" dir
-                                       "--label" "AUTO" "--no-focus"))
+                                       "--label" "auto" "--no-focus"))
                 'result 'root_pane)))
     (unless workspace
       (org-dispatch--herdr "tab" "rename" (alist-get 'tab_id pane) label))

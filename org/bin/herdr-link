@@ -41,14 +41,39 @@ case $1 in
   pi) f=$(ls ~/.local/state/pi/sessions/*/*_"$2".jsonl ~/.pi/agent/sessions/*/*_"$2".jsonl 2>/dev/null | head -n1) ;;
 esac
 [ -n "$f" ] || exit 1
-printf '%s\n%s\n' "$(grep -m1 -o '"cwd":"[^"]*"' "$f" | cut -d'"' -f4)" "$f"
+printf '%s\n%s\n%s\n' "$(grep -m1 -o '"cwd":"[^"]*"' "$f" | cut -d'"' -f4)" "$f" \
+  "$(grep '"type":"session_info"' "$f" | tail -n1 | grep -o '"name":"[^"]*"' | cut -d'"' -f4)"
 EOF
   ) || die "session $agent:$session not found on $host"
   cwd=$(sed -n 1p <<<"$found")
+  name=$(sed -n 3p <<<"$found")
   case $agent in
     claude) cmd="claude --resume $session" ;;
     pi) cmd="pi --session $(sed -n 2p <<<"$found")" ;;
   esac
+}
+
+# Open a focused tab in DIR and print its pane. org-dispatch names its pi
+# sessions "auto · HEADING"; those go in the auto workspace under the same tab
+# label org-dispatch gives them, so reopened runs sit beside new ones.
+open_tab() {
+  local dir=$1 label workspace created
+  if [[ $name != "auto · "* ]]; then
+    on_host herdr tab create --cwd "$dir" --focus | jq -r .result.root_pane.pane_id
+    return
+  fi
+  label=${name#auto · }
+  label=${label:0:40}
+  workspace=$(on_host herdr workspace list | jq -r '
+    first(.result.workspaces[] | select(.label | test("^(\\[[0-9]+\\] )?auto$"; "i")) | .workspace_id) // empty')
+  if [[ -n $workspace ]]; then
+    on_host herdr tab create --workspace "$workspace" --cwd "$dir" --label "$label" --focus |
+      jq -r .result.root_pane.pane_id
+  else
+    created=$(on_host herdr workspace create --cwd "$dir" --label auto --focus)
+    on_host herdr tab rename "$(jq -r .result.root_pane.tab_id <<<"$created")" "$label" >/dev/null
+    jq -r .result.root_pane.pane_id <<<"$created"
+  fi
 }
 
 # Raise the window running a Herdr client for this host. Fails if none exists.
@@ -96,7 +121,7 @@ show() {
 }
 
 jump() {
-  local link=${1#herdr:} rest target tab new cwd cmd
+  local link=${1#herdr:} rest target tab new cwd cmd name=
   pane=
   host=${link%%/*}
   rest=${link#*/}
@@ -123,7 +148,7 @@ jump() {
   elif [[ -n ${tab:-} ]]; then
     on_host herdr tab focus "$tab" >/dev/null
   else
-    new=$(on_host herdr tab create --cwd "$cwd" --focus | jq -r .result.root_pane.pane_id)
+    new=$(open_tab "$cwd")
     on_host herdr pane run "$new" "$cmd" >/dev/null
   fi
 }
