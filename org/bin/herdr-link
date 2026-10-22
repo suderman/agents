@@ -166,10 +166,11 @@ jump() {
 }
 
 # Attach this terminal to one agent pane, as over ssh from a phone. Detaching
-# leaves the agent running and the desktop layout as it was.
+# leaves the agent running and the desktop layout as it was. Herdr allows one
+# attached client per pane, so this one takes over from any stale earlier one.
 attach_pane() {
   exec env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID \
-    herdr agent attach "$1"
+    herdr agent attach "$1" --takeover
 }
 
 attach() {
