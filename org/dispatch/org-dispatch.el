@@ -533,8 +533,8 @@ with NOTE, moving the Sessions links into it, then trim the log."
                                                    (car section) (cdr section)))))
          (org-dispatch--append
           "Sessions"
-          (format "- [[%s@%s][%s · pi · %s]]" link pane org-dispatch-host
-                  (format-time-string "%Y-%m-%d %H:%M")))))
+          (format "- [[%s@%s][pi@%s/%s]]" link pane org-dispatch-host
+                  (format-time-string "%Y-%m-%dT%H%M")))))
      (plist-get task :heading))))
 
 (defun org-dispatch--prompt (pane text)

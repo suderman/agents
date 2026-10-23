@@ -292,7 +292,12 @@ installed, link the session to the thread so Jon can follow it from Org back to
 the pane, or resume it.
 
 1. Run `herdr-link stamp`. It prints an Org link naming host, agent, session,
-   and pane.
+   and pane, labelled `agent@host/YYYY-MM-DDTHHMM`. When several sessions in
+   one thread play different roles, such as a supervisor and a worker, pass a
+   short role, `herdr-link stamp supervisor`, to end the label with
+   `#supervisor`. Write roles as lowercase hyphenated slugs, such as
+   `petrochina-worker`; the tool converts anything else the same way.
+   Otherwise pass nothing.
 2. Search the thread for `herdr:<host>/<agent>:<session>`. A resumed session
    keeps its ID; if it is listed, add nothing.
 3. Otherwise append the link to the thread's `** Sessions` section, creating it
@@ -301,8 +306,8 @@ the pane, or resume it.
 ```org
 ** Sessions
 
-- [[herdr:kit/claude:8419644e-636d-490b-bec0-3c28856a68a5@w2Q:pN][kit · claude · 2026-10-11 07:38]]
-- [[herdr:cog/pi:01a1176c-3aa6-7717-a4c6-eaa0aa0a0833@w9:p1][cog · pi · 2026-10-12 09:10]]
+- [[herdr:kit/claude:8419644e-636d-490b-bec0-3c28856a68a5@w2Q:pN][claude@kit/2026-10-11T0738]]
+- [[herdr:cog/pi:01a1176c-3aa6-7717-a4c6-eaa0aa0a0833@w9:p1][pi@cog/2026-10-12T0910#worker]]
 ```
 
 A thread may collect sessions from several hosts and agents. Keep existing

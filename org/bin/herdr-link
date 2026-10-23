@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Stamp and follow Org links to Herdr agent sessions.
 #
-#   herdr-link stamp        print an Org link for the calling Herdr pane
+#   herdr-link stamp [TAG]  print an Org link for the calling Herdr pane
 #   herdr-link jump LINK    focus the pane for LINK, resuming the session if needed
 #   herdr-link attach LINK  attach this terminal to that pane, resuming likewise
 #   herdr-link pick         choose a live agent on this host and attach to it
@@ -16,13 +16,16 @@ die() {
   exit 1
 }
 
+# The label reads AGENT@HOST/YYYY-MM-DDTHHMM, ending in #TAG as a lowercase slug
+# when TAG is given.
 stamp() {
   [[ -n ${HERDR_PANE_ID:-} ]] || die "not in a Herdr pane"
-  herdr pane get "$HERDR_PANE_ID" | jq -er --arg host "$(</proc/sys/kernel/hostname)" '
+  herdr pane get "$HERDR_PANE_ID" | jq -er --arg host "$(</proc/sys/kernel/hostname)" --arg tag "${1:-}" '
     .result.pane as $p
     | ($p.agent_session // error("no agent session in this pane")) as $s
     | ($s.value | if $s.agent == "pi" then capture("_(?<id>[0-9a-f-]{36})\\.jsonl$").id else . end) as $id
-    | "[[herdr:\($host)/\($s.agent):\($id)@\($p.pane_id)][\($host) · \($s.agent) · \(now | strflocaltime("%Y-%m-%d %H:%M"))]]"'
+    | ($tag | ascii_downcase | gsub("[^a-z0-9]+"; "-") | gsub("^-|-$"; "") | if . == "" then "" else "#" + . end) as $tag
+    | "[[herdr:\($host)/\($s.agent):\($id)@\($p.pane_id)][\($s.agent)@\($host)/\(now | strflocaltime("%Y-%m-%dT%H%M"))\($tag)]]"'
 }
 
 # Run a command on the link's host, over ssh when it is not this one.
@@ -216,9 +219,9 @@ pick() {
 }
 
 case ${1:-} in
-  stamp) stamp ;;
+  stamp) [[ $# -le 2 ]] || die "usage: herdr-link stamp [TAG]"; stamp "${2:-}" ;;
   jump) [[ $# -eq 2 ]] || die "usage: herdr-link jump LINK"; jump "$2" ;;
   attach) [[ $# -eq 2 ]] || die "usage: herdr-link attach LINK"; attach "$2" ;;
   pick) pick ;;
-  *) die "usage: herdr-link stamp | herdr-link jump LINK | herdr-link attach LINK | herdr-link pick" ;;
+  *) die "usage: herdr-link stamp [TAG] | herdr-link jump LINK | herdr-link attach LINK | herdr-link pick" ;;
 esac
