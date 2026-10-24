@@ -8,7 +8,8 @@
 ;;
 ;; Agents write content as text. States and dates go through Org, so CLOSED,
 ;; repeaters, LOGBOOK entries, and weekdays come out as Emacs makes them.
-;; HEADING is a title without keyword, priority, or tags, or id:UUID.
+;; HEADING is a title without keyword, priority, or tags, an outline path
+;; such as "Hockey / Practice", or id:UUID.
 ;; Loading org-dispatch.el shares its TODO keywords and settings.
 
 (require 'org-dispatch)
@@ -61,16 +62,37 @@ range, and optional repeater and warning cookies."
               (if end (concat "-" (funcall pad end)) "")
               (mapconcat (lambda (c) (concat " " c)) (nreverse cookies) "")))))
 
+(defun org-edit--path ()
+  "Titles from the top-level ancestor down to the heading at point."
+  (save-excursion
+    (let ((path (list (org-get-heading t t t t))))
+      (while (org-up-heading-safe)
+        (push (org-get-heading t t t t) path))
+      path)))
+
+(defun org-edit--ends-with-p (list suffix)
+  "Non-nil when LIST ends with the elements of SUFFIX."
+  (let ((n (- (length list) (length suffix))))
+    (and (>= n 0) (equal (nthcdr n list) suffix))))
+
 (defun org-edit--headings (heading)
-  "Positions of the headings HEADING names in the current buffer."
+  "Positions of the headings HEADING names in the current buffer.
+HEADING is a title, an outline path such as \"Hockey / Practice\" matched
+from its end, or id:UUID. A title containing \" / \" still matches whole."
   (if (string-prefix-p "id:" heading)
       (let ((position (org-find-property "ID" (substring heading 3))))
         (and position (list position)))
-    (let (found)
-      (org-map-entries (lambda ()
-                         (when (equal (org-get-heading t t t t) heading)
-                           (push (point) found))))
-      (nreverse found))))
+    (let ((parts (split-string heading " / "))
+          titles paths)
+      (org-map-entries
+       (lambda ()
+         (let ((path (org-edit--path)))
+           (when (equal (car (last path)) heading)
+             (push (point) titles))
+           (when (and (cdr parts) (org-edit--ends-with-p path parts))
+             (push (point) paths)))))
+      (nreverse (or titles paths)))))
+
 
 (defun org-edit--at (file heading function)
   "Call FUNCTION at the one heading HEADING names in FILE, save, and print it."
@@ -88,7 +110,8 @@ range, and optional repeater and warning cookies."
             (cond
              ((null found) (error "no heading %S in %s" heading file))
              ((cdr found)
-              (error "%d headings %S in %s; give its id:" (length found) heading file)))
+              (error "%d headings %S in %s; give a path such as \"Parent / %s\", or its id:"
+                     (length found) heading file (car (last (split-string heading " / "))))))
             (goto-char (car found))
             (funcall function)
             ;; Org writes LOGBOOK entries after the command; batch has no command loop.

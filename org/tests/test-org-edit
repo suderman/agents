@@ -64,6 +64,30 @@ check "a duplicate title is refused" has "$out" '2 headings'
 run todo "$tasks" "id:twin-two" PROG >/dev/null
 check "id: picks one" line "$tasks" '^\* PROG Twin$'
 
+seasons="$HOME/org/seasons.org"
+cat >"$seasons" <<'EOF'
+* Hockey
+** Fall
+*** TODO Practice
+** Winter
+*** TODO Practice
+* Basketball
+** Winter
+*** TODO Practice
+* TODO A / B
+EOF
+out=$(run todo "$seasons" "Practice" DONE)
+check "a duplicate suggests a path" has "$out" 'Parent / Practice'
+run todo "$seasons" "Fall / Practice" DONE >/dev/null
+check "a path picks one" has "$(sed -n 3p "$seasons")" '^\*\*\* DONE Practice$'
+out=$(run todo "$seasons" "Winter / Practice" DONE)
+check "a path that still matches twice is refused" has "$out" '2 headings'
+run todo "$seasons" "Hockey / Winter / Practice" DONE >/dev/null
+check "a longer path picks one" has "$(sed -n 6p "$seasons")" '^\*\*\* DONE Practice$'
+check "and leaves the other" line "$seasons" '^\*\*\* TODO Practice$'
+run todo "$seasons" "A / B" DONE >/dev/null
+check "a title with a slash still matches whole" line "$seasons" '^\* DONE A / B$'
+
 run schedule "$tasks" "Plan" "2026-11-03 9:00" >/dev/null
 check "schedule writes the weekday" line "$tasks" '^SCHEDULED: <2026-11-03 Tue 09:00>$'
 run deadline "$tasks" "Plan" "2026-11-06 -2d" >/dev/null

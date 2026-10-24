@@ -211,8 +211,9 @@ States describe the task from Jon's point of view:
   org-edit schedule FILE 'Heading title' '2026-10-30 14:00'
   ```
 
-  Pass the title without keyword or tags, or `id:UUID` when the title is not
-  unique. It prints the heading as written. In a dispatched session, use
+  Pass the title without keyword or tags. When it is not unique, it is
+  refused; pass its outline path, such as `'Parent / Title'`, or `id:UUID`. It
+  prints the heading as written. In a dispatched session, use
   `org-dispatch finish` instead.
 - Staging, committing, and pushing are never tasks of their own. If Jon later
   asks only for them, do not reopen the task or add a heading; record the

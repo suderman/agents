@@ -99,8 +99,10 @@ org-edit deadline FILE HEADING WHEN|none
 org-edit date WHEN                          # print an active timestamp
 #+end_src
 
-=HEADING= is the title without keyword, priority, or tags, or =id:UUID=;
-a title that matches twice is refused. =WHEN= is one date (=2026-10-30=,
+=HEADING= is the title without keyword, priority, or tags. When a title
+matches twice, name it by its outline path, matched from the end, such as
+=Hockey 2026-27 / Practice=, or by =id:UUID=; a path that still matches twice
+is refused. =WHEN= is one date (=2026-10-30=,
 =+3d=, =fri=, =today=), an optional time or range (=14:00=, =9:00-10:30=), and
 optional cookies (=+1w=, =.+1d=, =-2d=). Words Org would silently read as
 today, such as =next tuesday=, are refused.

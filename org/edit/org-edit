@@ -8,7 +8,8 @@ set -euo pipefail
 #   org-edit deadline FILE HEADING WHEN|none    set or remove DEADLINE
 #   org-edit date WHEN                          print the active timestamp
 #
-# HEADING is the title without keyword, priority, or tags, or id:UUID.
+# HEADING is the title without keyword, priority, or tags, an outline path
+# matched from its end (Hockey / Practice), or id:UUID.
 # WHEN is one date (2026-10-30, +3d, fri, today), an optional time or range
 # (14:00, 9:00-10:30), and optional cookies (+1w, .+1d, -2d).
 # The Nix wrapper sets ORG_EDIT_EL and ORG_DISPATCH_EL; from a checkout, use the files here.
