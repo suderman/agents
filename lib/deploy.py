@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 skills = runpy.run_path(str(ROOT / "lib/skills"))
+mcp = runpy.run_path(str(ROOT / "lib/mcp.py"))
 HARNESSES = ("pi", "opencode", "hermes", "claude")
 
 
@@ -96,8 +97,11 @@ def verify(name, destination):
         config = "settings.json" if name == "pi" else "opencode.json"
         actual = json.loads((destination / config).read_text())
         expected = json.loads((source / config).read_text())
-        plain = (["AGENTS.md", "keybindings.json", "mcp.json", "models.json", "pi-fff.json", "settings-extensions.json"]
+        plain = (["AGENTS.md", "keybindings.json", "models.json", "pi-fff.json", "settings-extensions.json"]
                  if name == "pi" else ["AGENTS.md", "dcp.jsonc", "notification-ntfy.json", "tui.json"])
+        target = destination / "mcp.json"
+        if name == "pi" and (target.is_symlink() or json.loads(target.read_text()) != mcp["servers"](source / "mcp.json")):
+            raise ValueError(f"pi: deployment mismatch: {target}")
         relative = "prompts" if name == "pi" else "commands"
         for prompt in (Path.home() / "profile/prompts").glob("*.md"):
             if (destination / relative / prompt.name).read_bytes() != prompt.read_bytes():

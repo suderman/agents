@@ -29,7 +29,7 @@ runtime_hashes() {
 
 before="$(runtime_hashes)"
 "$source_dir/bootstrap"
-cmp "$source_dir/mcp.json" "$PI_CODING_AGENT_DIR/mcp.json"
+python3 "$source_dir/../lib/mcp.py" "$source_dir/mcp.json" | cmp - "$PI_CODING_AGENT_DIR/mcp.json"
 for name in commit commitall; do
   cmp "$HOME/profile/prompts/$name.md" "$PI_CODING_AGENT_DIR/prompts/$name.md"
   [[ ! -L "$PI_CODING_AGENT_DIR/prompts/$name.md" && -w "$PI_CODING_AGENT_DIR/prompts/$name.md" ]]
@@ -42,7 +42,8 @@ jq -e '
   (has("subagents") | not)
 ' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null
 jq -e '
-  (.mcpServers | keys | length) == 4 and
+  ((.mcpServers | keys) - ["davinci-resolve"]) == ["chrome-devtools", "context7", "gh_grep", "minimax"] and
+  ([.mcpServers[] | has("optional")] | any | not) and
   .mcpServers["chrome-devtools"].exposure == "direct" and
   ([.mcpServers[] | .description | type == "string" and length > 0] | all)
 ' "$PI_CODING_AGENT_DIR/mcp.json" >/dev/null

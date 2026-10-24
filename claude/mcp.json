@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "davinci-resolve": {
+      "type": "stdio",
+      "command": "davinci-resolve-mcp",
+      "args": [],
+      "env": {},
+      "optional": true
+    }
+  }
+}

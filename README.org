@@ -194,6 +194,24 @@ machine-generated =themes/stylix.json= survives. =pi/fix-dcp-package= repairs
 pi-dcp's incorrectly published TypeBox dependency without changing extension
 code. Pi packages and package-provided skills remain Pi-managed.
 
+*** MCP servers
+
+=pi/mcp.json= and =claude/mcp.json= declare each harness's user-level MCP
+servers. =lib/mcp.py= prepares them for the current machine. A stdio server
+marked ="optional": true= deploys only when its =command= is on =PATH= at apply
+time, and the flag itself is removed. This keeps machine-specific servers off
+other hosts. =davinci-resolve= runs =davinci-resolve-mcp=, which NixOS provides
+where =programs.davinci-resolve.mcp.enable= is set. After installing or removing
+such a command, run =agents apply= again. =agents doctor= compares deployed
+servers with the same per-machine result.
+
+Pi receives the prepared file as =~/.pi/agent/mcp.json=. Claude merges its
+servers into the top-level =mcpServers= of =~/.claude.json=, beside servers added
+with =claude mcp add=, and records a digest of each in
+=~/.claude/.agents-managed.json=. It removes a deselected server only while that
+digest still matches. A locally edited managed server, or an unmanaged server
+with a declared name, fails apply without changing anything.
+
 OpenCode refreshes its named config, agents, commands, and themes. Existing
 native skills, Git metadata, local commands, and other files stay in place.
 
@@ -224,7 +242,7 @@ projects in those trees, including their project hooks and other startup code.
 
 Trust is separate from the permission mode. The adapter merges only
 =projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json=, or
-=$CLAUDE_CONFIG_DIR/.claude.json= when set. Existing auth, MCP configuration,
+=$CLAUDE_CONFIG_DIR/.claude.json= when set. Existing auth, unmanaged MCP servers,
 project history, and other state survive. Before a change, it saves a private
 backup under the Claude destination's =backups/= directory and writes the state
 atomically with mode =0600=. Repeat applies leave unchanged state alone.
@@ -239,7 +257,7 @@ through Claude's built-in plugin, alongside any existing =CLAUDE.md=. The plugin
 skips instructions already imported or linked by path or content. The adapter
 does not create project =CLAUDE.md= files or install third-party plugins.
 
-Claude records only its own skill links and prompt copies in
+Claude records only its own skill links, prompt copies, and MCP servers in
 =~/.claude/.agents-managed.json=. It removes deselected entries only when they
 still match that record. If a managed entry was changed locally or a native
 entry occupies its name, apply fails without overwriting it. Rename or preserve

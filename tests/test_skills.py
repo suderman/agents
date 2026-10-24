@@ -416,7 +416,7 @@ class SkillsTests(unittest.TestCase):
     def test_bootstraps_do_not_certify_global_skills(self):
         for name in ["pi", "opencode", "hermes"]:
             shutil.copytree(REPO / name, self.root / name)
-        for relative in ["shared-prompts.sh", "runtime.sh"]:
+        for relative in ["shared-prompts.sh", "runtime.sh", "mcp.py"]:
             shutil.copy2(REPO / "lib" / relative, self.root / "lib" / relative)
         self.run_command("update")
         self.add_skill(self.personal / "alpha", "alpha")

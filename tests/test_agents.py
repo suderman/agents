@@ -38,6 +38,8 @@ class AgentsTests(unittest.TestCase):
         for name in ["lib", "pi", "opencode", "hermes", "claude"]:
             shutil.copytree(REPO / name, self.root / name)
         shutil.copy2(REPO / "agents", self.root / "agents")
+        # Optional servers depend on the host PATH; tests declare their own.
+        self.write("claude/mcp.json", {"mcpServers": {}})
         (self.root / ".gitignore").write_text("/skills/\n/.scratch/\n")
         (self.home / "profile/prompts").mkdir(parents=True)
         self.skill(self.home / "profile/skills/personal", "personal")
@@ -335,6 +337,53 @@ class AgentsTests(unittest.TestCase):
         self.assertFalse((self.home / ".claude/skills/personal").is_symlink())
         self.assertFalse((self.home / ".claude/commands/review.md").exists())
         self.assertEqual(native, self.native_snapshot())
+
+    def test_optional_mcp_servers_follow_path_and_claude_keeps_native_entries(self):
+        bin_dir = self.work / "bin"
+        bin_dir.mkdir()
+        (bin_dir / "fixture-mcp").write_text("#!/bin/sh\n")
+        (bin_dir / "fixture-mcp").chmod(0o755)
+        env = {**self.env, "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+        present = {"type": "stdio", "command": "fixture-mcp", "args": [], "env": {}}
+        declared = {"present": {**present, "optional": True},
+                    "absent": {"type": "stdio", "command": "missing-mcp", "args": [], "optional": True},
+                    "remote": {"type": "http", "url": "https://example.invalid/mcp"}}
+        self.write("claude/mcp.json", {"mcpServers": declared})
+        self.write("pi/mcp.json", {"mcpServers": {"present": {"command": "fixture-mcp", "optional": True},
+                                                  "absent": {"command": "missing-mcp", "optional": True}}})
+        state = self.home / ".claude.json"
+        native = {"command": "native-mcp", "args": []}
+        state.write_text(json.dumps({"oauth": "preserve", "projects": {}, "mcpServers": {"native": native}}))
+        self.command("apply", env=env)
+        servers = json.loads(state.read_text())["mcpServers"]
+        self.assertEqual(servers, {"native": native, "present": present, "remote": declared["remote"]})
+        self.assertEqual(json.loads((self.home / ".pi/agent/mcp.json").read_text()),
+                         {"mcpServers": {"present": {"command": "fixture-mcp"}}})
+        self.command("doctor", env=env)
+        before = snapshot(self.home)
+        self.command("apply", env=env)
+        self.assertEqual(before, snapshot(self.home))
+
+        edited = json.loads(state.read_text())
+        edited["mcpServers"]["present"]["args"] = ["local"]
+        state.write_text(json.dumps(edited))
+        before = snapshot(self.home)
+        self.command("apply", env=env, error="changed locally")
+        self.assertEqual(before, snapshot(self.home))
+        edited["mcpServers"]["present"]["args"] = []
+        state.write_text(json.dumps(edited))
+
+        self.write("claude/mcp.json", {"mcpServers": {"native": {"type": "stdio", "command": "fixture-mcp"}}})
+        before = snapshot(self.home)
+        self.command("apply", env=env, error="mcpServers collision")
+        self.assertEqual(before, snapshot(self.home))
+
+        self.write("claude/mcp.json", {"mcpServers": {"remote": declared["remote"]}})
+        self.command("apply", env=env)
+        self.assertEqual(json.loads(state.read_text())["mcpServers"],
+                         {"native": native, "remote": declared["remote"]})
+        self.command("apply")  # Without fixture-mcp on PATH, Pi's optional server disappears.
+        self.assertEqual(json.loads((self.home / ".pi/agent/mcp.json").read_text()), {"mcpServers": {}})
 
     def origin(self):
         origin = self.work / "origin.git"

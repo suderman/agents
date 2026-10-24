@@ -18,6 +18,12 @@
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
     },
+    "davinci-resolve": {
+      "description": "Control the running DaVinci Resolve Studio: scripting API docs, Python scripts, DCTLs, and LUTs.",
+      "command": "davinci-resolve-mcp",
+      "args": [],
+      "optional": true
+    },
     "gh_grep": {
       "description": "Search public GitHub repositories for literal code patterns and real usage examples.",
       "url": "https://mcp.grep.app"

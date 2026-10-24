@@ -64,6 +64,23 @@ merge_settings() {
   trap - RETURN
 }
 
+# Optional servers deploy only where their command exists; see lib/mcp.py.
+deploy_mcp() {
+  local target="$runtime_dir/mcp.json"
+  local temporary
+
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' RETURN
+  python3 "$repo_root/lib/mcp.py" "$source_dir/mcp.json" >"$temporary"
+  chmod 0644 -- "$temporary"
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$temporary" "$target"; then
+    rm -f -- "$temporary"
+  else
+    mv -fT -- "$temporary" "$target"
+  fi
+  trap - RETURN
+}
+
 copy_declared_entries() {
   local relative="$1"
   local source target temporary
@@ -98,6 +115,7 @@ source "$repo_root/lib/shared-prompts.sh"
 validate_shared_prompts "$HOME/profile/prompts" "$source_dir/prompts"
 
 jq -e 'type == "object"' "$source_dir/settings.json" >/dev/null
+python3 "$repo_root/lib/mcp.py" "$source_dir/mcp.json" >/dev/null
 if [[ -e "$runtime_dir/settings.json" ]]; then
   jq -e 'type == "object"' "$runtime_dir/settings.json" >/dev/null
 fi
@@ -106,9 +124,10 @@ fi
 mkdir -p -- "$runtime_dir"
 merge_settings
 
-for file in AGENTS.md keybindings.json mcp.json models.json pi-fff.json settings-extensions.json; do
+for file in AGENTS.md keybindings.json models.json pi-fff.json settings-extensions.json; do
   copy_file "$source_dir/$file" "$runtime_dir/$file"
 done
+deploy_mcp
 
 # Native MCP replaces the retired adapter configuration and disposable caches.
 rm -f -- "$runtime_dir/"{mcp-adapter.json,mcp-cache.json,mcp-npx-cache.json}

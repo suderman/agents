@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
-from deploy import ROOT, contains, destinations, run
+from deploy import ROOT, contains, destinations, mcp, run
 
 SOURCE = ROOT / "claude"
 
@@ -43,6 +43,30 @@ def write_copy(target, content, mode=0o644):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def server_digest(server):
+    return hashlib.sha256(json.dumps(server, sort_keys=True).encode()).hexdigest()
+
+
+def mcp_servers(state, previous):
+    """Merge declared user-scope MCP servers into ~/.claude.json; remove only unchanged managed ones."""
+    declared = mcp["servers"](SOURCE / "mcp.json")["mcpServers"]
+    if not declared and "mcpServers" not in state:
+        return {}
+    servers = state.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        raise TypeError("Claude mcpServers state must be an object")
+    for name, recorded in previous["mcpServers"].items():
+        if name in servers and server_digest(servers[name]) != recorded:
+            raise ValueError(f"Claude managed MCP server changed locally; preserve and resolve before apply: {name}")
+    for name in previous["mcpServers"].keys() - declared.keys():
+        servers.pop(name, None)
+    for name, server in declared.items():
+        if name in servers and name not in previous["mcpServers"]:
+            raise ValueError(f"Claude native/mcpServers collision: {name}")
+        servers[name] = server
+    return {name: server_digest(server) for name, server in declared.items()}
 
 
 def merge(actual, declared):
@@ -130,9 +154,11 @@ def plan(destination):
             commands[path.name] = body.encode()
     record = destination / ".agents-managed.json"
     previous = json.loads(record.read_text()) if record.exists() else {"skills": {}, "commands": {}}
-    if set(previous) != {"skills", "commands"} or any(not isinstance(v, dict) for v in previous.values()):
+    previous.setdefault("mcpServers", {})  # Records written before MCP management lack this group.
+    if set(previous) != {"skills", "commands", "mcpServers"} or any(not isinstance(v, dict) for v in previous.values()):
         raise ValueError("invalid Claude managed-entry record")
-    for group, old in previous.items():
+    for group in ["skills", "commands"]:
+        old = previous[group]
         for name, value in old.items():
             if Path(name).name != name or name in {".", ".."} or not isinstance(value, str):
                 raise ValueError("unsafe Claude managed-entry record")
@@ -173,6 +199,7 @@ def main():
     try:
         selected, commands, previous, state, settings = plan(destination)
         trust_file, trust = workspace_trust()
+        state["mcpServers"] = mcp_servers(trust, previous)
         if sys.argv[1:] == ["--check"]:
             return
         for name, source in selected.items():
