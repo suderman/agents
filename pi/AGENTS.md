@@ -25,9 +25,19 @@ Before substantive work, check for a matching Org project under `~/org/work/`. D
 - Try before asking. If you wonder whether a tool exists, run it. If it fails, report that and suggest a fix.
 - Investigate before fixing. Read the full error, confirm a hypothesis, then fix the root cause.
 - Check as you go. Before saying "fixed" or "tests pass", run the check and show the command and output. "Should work now" is a guess, not a result.
-- In Org headings, put one space between the title and its tags. Do not pad tags to a column.
 - Clean up what you created: debug logs, experiments, temp files. Keep supplied project and task materials.
 - Delegate only when the user asks. "Ask Claude" or "give Claude a task" means load `ask-claude`. Use `claude-browser` only when the user names claude.ai or a Project.
+
+## Org files
+
+The file records structure and the editor wraps lines.
+
+- Put each paragraph and each list item on one physical line, however long. Never hard-wrap Org prose to a column or run `fill-paragraph` on it.
+- Start a heading's content on the next line, whether that is planning, a drawer, text, a list, or a child heading. Planning and drawers stay directly under their heading.
+- End a finished paragraph, list, table, or block with one blank line when anything follows it, including the next heading. Put no blank line after a heading or drawer, inside a drawer, between ordinary list items, or at the end of the file, and never two in a row.
+- Keep source, example, and verse blocks, tables, and drawers exactly as their syntax and content need.
+- Leave text you are not otherwise editing as it is. Never add blank lines to change how folded headings look; Emacs handles that.
+- In headings, put one space between the title and its tags. Do not pad tags to a column.
 
 ## Code changes
 

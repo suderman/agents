@@ -258,7 +258,7 @@ New sections go before Dialog, which stays last."
                        (save-excursion (org-end-of-subtree t t) (point)))))
       (skip-chars-backward " \t\n")
       (end-of-line)
-      (insert (if section "\n" (format "\n\n%s %s\n\n" stars title)) text)
+      (insert (if section "\n" (format "\n\n%s %s\n" stars title)) text)
       (unless section
         (unless (looking-at-p "\n") (insert "\n"))
         (when (looking-at-p "\n\\*") (insert "\n"))))))

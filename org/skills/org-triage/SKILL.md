@@ -82,15 +82,14 @@ DEADLINE: <2026-10-17 Sat>
 :PROPERTIES:
 :CREATED:  [2026-10-14 Wed 10:05]
 :END:
-
-From Sam Lee by text, [2026-10-13 Tue]. Sam asked whether rehearsal can
-move from 10:00 to 13:00 on Saturday and needs an answer by Friday.
+From Sam Lee by text, [2026-10-13 Tue]. Sam asked whether rehearsal can move from 10:00 to 13:00 on Saturday and needs an answer by Friday.
 
 #+begin_quote
 Hey Jon, any chance we can push Saturday to 1pm? Let me know by Friday.
 #+end_quote
 ```
 
+- Follow the Org rules in the global instructions, as the example does.
 - Start the heading with a verb and keep it short.
 - Set `:CREATED:` to the current time as an inactive timestamp.
 - Add `DEADLINE` only when the source states a due date, and `SCHEDULED`

@@ -12,8 +12,23 @@ Before substantive work, look for an existing project under `~/org/work/`.
 When one exists, load `project-org-tasks`, resume its task, and keep that Org
 record current. Do not create repository-local planning files as a substitute.
 
-In Org headings, put one space between the title and its tags. Do not pad
-tags to a column.
+When writing Org, the file records structure and the editor wraps lines:
+
+- Put each paragraph and each list item on one physical line, however long.
+  Never hard-wrap Org prose to a column or run `fill-paragraph` on it.
+- Start a heading's content on the next line, whether that is planning, a
+  drawer, text, a list, or a child heading. Planning and drawers stay
+  directly under their heading.
+- End a finished paragraph, list, table, or block with one blank line when
+  anything follows it, including the next heading. Put no blank line after a
+  heading or drawer, inside a drawer, between ordinary list items, or at the
+  end of the file, and never two in a row.
+- Keep source, example, and verse blocks, tables, and drawers exactly as
+  their syntax and content need.
+- Leave text you are not otherwise editing as it is. Never add blank lines
+  to change how folded headings look; Emacs handles that.
+- In headings, put one space between the title and its tags. Do not pad
+  tags to a column.
 
 Use `~/profile/skills` for personal authored skills and `~/profile/prompts` for
 personal commands. Ask before editing them. `~/.agents/skills` is generated

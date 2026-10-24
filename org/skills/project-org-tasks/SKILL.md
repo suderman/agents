@@ -234,19 +234,21 @@ States describe the task from Jon's point of view:
    read it before making decisions.
 6. Inside Herdr, link this session as described in "Herdr session links".
 
+Write the thread by the Org rules in the global instructions: each heading
+directly on its content, one physical line per paragraph or list item, and one
+blank line after each finished section.
+
 ```org
 * PROG Fix duplicate webhook delivery
-
 ** Scope
-
-Prevent retries from applying the same delivery twice without changing the
-provider-facing response contract.
+Prevent retries from applying the same delivery twice without changing the provider-facing response contract.
 
 ** Checklist
-
 - [X] Reproduce the duplicate write and trace its call path.
 - [ ] Add idempotency at the shared persistence boundary.
 - [ ] Verify first delivery, retry, and concurrent delivery behavior.
+
+* TODO Next thread
 ```
 
 ## Maintain the active thread
@@ -312,7 +314,6 @@ the pane, or resume it.
 
 ```org
 ** Sessions
-
 - [[herdr:kit/claude:8419644e-636d-490b-bec0-3c28856a68a5@w2Q:pN][claude@kit/2026-10-11T0738]]
 - [[herdr:cog/pi:01a1176c-3aa6-7717-a4c6-eaa0aa0a0833@w9:p1][pi@cog/2026-10-12T0910#worker]]
 ```
