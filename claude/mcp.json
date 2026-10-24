@@ -1,4 +1,5 @@
 {
+  "retiredMcpServers": ["DaVinci Resolve"],
   "mcpServers": {
     "davinci-resolve": {
       "type": "stdio",

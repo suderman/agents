@@ -212,6 +212,12 @@ with =claude mcp add=, and records a digest of each in
 digest still matches. A locally edited managed server, or an unmanaged server
 with a declared name, fails apply without changing anything.
 
+=retiredMcpServers= in =claude/mcp.json= lists names that apply always removes,
+with the usual backup, and that =agents doctor= reports when they reappear. It
+lists Resolve's "AI Assistants" entry, =DaVinci Resolve=, which points at a store
+path that fails outside Resolve's FHS wrapper. A retired name must not also be a
+managed server.
+
 OpenCode refreshes its named config, agents, commands, and themes. Existing
 native skills, Git metadata, local commands, and other files stay in place.
 

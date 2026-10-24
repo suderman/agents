@@ -50,10 +50,20 @@ def server_digest(server):
 
 
 def mcp_servers(state, previous):
-    """Merge declared user-scope MCP servers into ~/.claude.json; remove only unchanged managed ones."""
-    declared = mcp["servers"](SOURCE / "mcp.json")["mcpServers"]
+    """Merge declared user-scope MCP servers into ~/.claude.json; remove only unchanged managed ones.
+
+    Names in retiredMcpServers are removed whatever they contain. Use it for entries other
+    tools write, such as the store-path server from Resolve's "AI Assistants" dialog.
+    """
+    prepared = mcp["servers"](SOURCE / "mcp.json")
+    declared = prepared["mcpServers"]
+    retired = prepared.get("retiredMcpServers", [])
+    if not isinstance(retired, list) or not all(isinstance(name, str) for name in retired):
+        raise ValueError("Claude retiredMcpServers must be a list of names")
+    if set(retired) & (declared.keys() | previous["mcpServers"].keys()):
+        raise ValueError("Claude retiredMcpServers must not name a managed server")
     if not declared and "mcpServers" not in state:
-        return {}
+        return {}, retired
     servers = state.setdefault("mcpServers", {})
     if not isinstance(servers, dict):
         raise TypeError("Claude mcpServers state must be an object")
@@ -66,7 +76,9 @@ def mcp_servers(state, previous):
         if name in servers and name not in previous["mcpServers"]:
             raise ValueError(f"Claude native/mcpServers collision: {name}")
         servers[name] = server
-    return {name: server_digest(server) for name, server in declared.items()}
+    for name in retired:
+        servers.pop(name, None)
+    return {name: server_digest(server) for name, server in declared.items()}, retired
 
 
 def merge(actual, declared):
@@ -199,7 +211,7 @@ def main():
     try:
         selected, commands, previous, state, settings = plan(destination)
         trust_file, trust = workspace_trust()
-        state["mcpServers"] = mcp_servers(trust, previous)
+        state["mcpServers"], retired = mcp_servers(trust, previous)
         if sys.argv[1:] == ["--check"]:
             return
         for name, source in selected.items():
@@ -209,6 +221,9 @@ def main():
             actual_trust = json.loads(trust_file.read_text()) if trust_file.exists() else {}
             if not contains(actual_trust, trust):
                 raise ValueError("Claude workspace trust differs; run agents apply")
+            present = sorted(set(retired) & set(actual_trust.get("mcpServers", {})))
+            if present:
+                raise ValueError(f"Claude retired MCP servers present: {', '.join(present)}; run agents apply")
             if json.loads((destination / ".agents-managed.json").read_text()) != state:
                 raise ValueError("Claude managed-entry record differs from deployment")
             config = destination / "settings.json"

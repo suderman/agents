@@ -348,12 +348,14 @@ class AgentsTests(unittest.TestCase):
         declared = {"present": {**present, "optional": True},
                     "absent": {"type": "stdio", "command": "missing-mcp", "args": [], "optional": True},
                     "remote": {"type": "http", "url": "https://example.invalid/mcp"}}
-        self.write("claude/mcp.json", {"mcpServers": declared})
+        self.write("claude/mcp.json", {"retiredMcpServers": ["Dialog Server"], "mcpServers": declared})
         self.write("pi/mcp.json", {"mcpServers": {"present": {"command": "fixture-mcp", "optional": True},
                                                   "absent": {"command": "missing-mcp", "optional": True}}})
         state = self.home / ".claude.json"
         native = {"command": "native-mcp", "args": []}
-        state.write_text(json.dumps({"oauth": "preserve", "projects": {}, "mcpServers": {"native": native}}))
+        dialog = {"command": "/nix/store/old/bin/ResolveMCP", "args": []}
+        state.write_text(json.dumps({"oauth": "preserve", "projects": {},
+                                     "mcpServers": {"native": native, "Dialog Server": dialog}}))
         self.command("apply", env=env)
         servers = json.loads(state.read_text())["mcpServers"]
         self.assertEqual(servers, {"native": native, "present": present, "remote": declared["remote"]})
@@ -363,6 +365,19 @@ class AgentsTests(unittest.TestCase):
         before = snapshot(self.home)
         self.command("apply", env=env)
         self.assertEqual(before, snapshot(self.home))
+
+        # Another tool writes the retired entry back: doctor reports it, apply removes it again.
+        restored = json.loads(state.read_text())
+        restored["mcpServers"]["Dialog Server"] = dialog
+        state.write_text(json.dumps(restored))
+        before = snapshot(self.home)
+        self.command("doctor", env=env, error="retired MCP servers present: Dialog Server")
+        self.assertEqual(before, snapshot(self.home))
+        self.command("apply", env=env)
+        self.assertNotIn("Dialog Server", json.loads(state.read_text())["mcpServers"])
+        self.write("claude/mcp.json", {"retiredMcpServers": ["present"], "mcpServers": declared})
+        self.command("apply", env=env, error="must not name a managed server")
+        self.write("claude/mcp.json", {"retiredMcpServers": ["Dialog Server"], "mcpServers": declared})
 
         edited = json.loads(state.read_text())
         edited["mcpServers"]["present"]["args"] = ["local"]
