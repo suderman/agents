@@ -202,12 +202,18 @@ States describe the task from Jon's point of view:
 
 - Verification, not a commit or push, is the threshold for `DONE`. Never leave
   a thread in `PROG` only because changes are uncommitted.
-- When setting `DONE` by editing text, add the line Emacs would write directly
-  under the heading, `CLOSED: [2026-10-11 Sun 09:26]`, with the current time.
-  Remove it when reopening a task.
-- Never mark a repeating heading (a repeater such as `+1d` in `SCHEDULED`)
-  `DONE` by editing text; Org would not advance it. Use `org-dispatch finish`
-  for dispatched tasks, or set `EVAL` and let Jon close it in Emacs.
+- Write a new heading's keyword as text. Change an existing heading's state,
+  `SCHEDULED`, or `DEADLINE` only through Org, which writes `CLOSED`, advances
+  repeaters, and logs as Emacs does. Never edit those by hand:
+
+  ```sh
+  org-edit todo FILE 'Heading title' DONE
+  org-edit schedule FILE 'Heading title' '2026-10-30 14:00'
+  ```
+
+  Pass the title without keyword or tags, or `id:UUID` when the title is not
+  unique. It prints the heading as written. In a dispatched session, use
+  `org-dispatch finish` instead.
 - Staging, committing, and pushing are never tasks of their own. If Jon later
   asks only for them, do not reopen the task or add a heading; record the
   commit or pull request identifiers in each affected thread. Add a

@@ -96,6 +96,17 @@ Hey Jon, any chance we can push Saturday to 1pm? Let me know by Friday.
 - Add `DEADLINE` only when the source states a due date, and `SCHEDULED`
   only when it says when to start. Put event dates in the body as active
   timestamps.
+- Let Org write dates, so weekdays are right. Write the heading without a
+  planning line, then set it, and print body timestamps instead of typing
+  them:
+
+  ```sh
+  org-edit deadline FILE 'Reply to Sam about the Saturday rehearsal time' 2026-10-17
+  org-edit date '2026-10-17 13:00'
+  ```
+
+  A heading that already exists changes state only through
+  `org-edit todo`.
 - Say who it came from, by what channel, and when. For email, include the
   subject and `Message-ID`.
 - Quote short messages in full. For long ones, summarize the request and

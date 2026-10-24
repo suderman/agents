@@ -8,10 +8,11 @@ the skills that tell agents how to keep the Org record.
 org/
 ├── dispatch/org-dispatch.el   dispatcher, run by Emacs in batch
 ├── dispatch/org-dispatch      command-line wrapper
+├── edit/org-edit              TODO states and dates set by Org for agents
 ├── prompts/                   task.org and nudge.org, sent to pi
 ├── bin/herdr-link             stamp and follow herdr: links
 ├── skills/                    project-org-tasks, org-triage
-└── tests/test-org-dispatch    batch tests with fixtures
+└── tests/                     batch tests with fixtures
 #+end_src
 
 ** Where each piece runs
@@ -21,7 +22,8 @@ these files, as it does for =suderman/edger=:
 
 - =org-dispatch.nix= builds the =org-dispatch= command, sets
   =ORG_DISPATCH_EL= and =ORG_DISPATCH_PROMPTS= to the pinned copies, and runs
-  it every minute with a systemd user timer.
+  it every minute with a systemd user timer. It also builds =org-edit= with
+  =ORG_EDIT_EL= and =ORG_DISPATCH_EL= pinned the same way.
 - =herdr.nix= builds =herdr-link= with its runtime tools.
 
 The dispatcher therefore always runs with the prompts from the same commit,
@@ -84,11 +86,40 @@ Runtime state lives in =~/.local/state/org-dispatch= on each host and is
 not synced. Repeating tasks keep 14 run entries in =:LOGBOOK:=; older ones
 move to =archive.org= beside the task's file.
 
+** States and dates outside dispatch
+
+Agents write headings and body text directly, but leave TODO states,
+=SCHEDULED=, =DEADLINE=, and timestamps to Org, so =CLOSED=, repeaters,
+=:LOGBOOK:= entries, and weekdays come out as Emacs makes them:
+
+#+begin_src sh
+org-edit todo FILE HEADING STATE            # TODO PROG EVAL HOLD DONE; never AUTO
+org-edit schedule FILE HEADING WHEN|none
+org-edit deadline FILE HEADING WHEN|none
+org-edit date WHEN                          # print an active timestamp
+#+end_src
+
+=HEADING= is the title without keyword, priority, or tags, or =id:UUID=;
+a title that matches twice is refused. =WHEN= is one date (=2026-10-30=,
+=+3d=, =fri=, =today=), an optional time or range (=14:00=, =9:00-10:30=), and
+optional cookies (=+1w=, =.+1d=, =-2d=). Words Org would silently read as
+today, such as =next tuesday=, are refused.
+
+It runs Emacs in batch with =org-dispatch.el='s keywords, like the
+dispatcher, rather than talking to a running daemon. kit runs a shared
+daemon plus one per Herdr workspace, and any of them may visit the file, so
+the file on disk is the shared truth; Jon's Emacs auto-saves visited Org
+buffers every few seconds and reverts on change. It refuses =asana.org= and
+Syncthing conflict copies. From a checkout, run it as
+=bash org/edit/org-edit=.
+
 ** Tests
 
 #+begin_src sh
 org/tests/test-org-dispatch
+org/tests/test-org-edit
 #+end_src
 
-The test needs =emacs= on =PATH= and uses temporary Org files and state. A
-fake =herdr= that always fails keeps it away from any running server.
+The tests need =emacs= on =PATH= and use temporary Org files and state. A
+fake =herdr= that always fails keeps the dispatcher test away from any
+running server.
