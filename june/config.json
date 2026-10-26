@@ -1,7 +1,7 @@
 {
   "model": {
     "provider": "cliproxyapi",
-    "modelId": "gpt-6.1-sol",
+    "modelId": "gpt-6.1-terra",
     "thinkingLevel": "medium"
   },
   "providersFile": "~/.pi/agent/models.json",
