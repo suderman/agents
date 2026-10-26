@@ -16,6 +16,7 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── org/                Org agent system: dispatcher, prompts, herdr-link, skills
 ├── opencode/           OpenCode configuration and bootstrap
 ├── hermes/             Hermes configuration and bootstrap
+├── june/               June defaults and operating rules, read in place
 ├── claude/             Claude preferences, instructions, and managed-entry adapter
 ├── lib/                resolver and deployment helpers
 ├── tests/              isolated local fixtures
@@ -42,13 +43,20 @@ on any machine using that link.
 | OpenCode | =~/.config/opencode= | =opencode.json skills.paths= |
 | Hermes | =~/.hermes= | =config.yaml skills.external_dirs= |
 | Claude Code | =~/.claude= | Managed individual links under =skills/= |
+| June | =~/.local/state/june= | =june/config.json skillDirs= paths |
 
-Pi, OpenCode, and Hermes refer to =~/.agents/skills= and =~/profile/skills=
+Pi, OpenCode, Hermes, and June refer to =~/.agents/skills= and =~/profile/skills=
 in place. Their native local skill directories remain active and untouched.
 Claude Code has no arbitrary skill-root setting. Its adapter installs individual
 links to these same sources, not a link over the whole native =skills/= directory.
 Native skills, synced skills, plugins, auth, sessions, and memories remain
 harness-owned. Shared names must not collide with personal or native skill names.
+
+June has no bootstrap. It reads =june/config.json= and =june/AGENTS.md= from
+this checkout, then =~/profile/june/= for her =SOUL.md= and personal settings,
+then =~/.config/june/= on the machine. =config.json= files merge in that order;
+for the other files the most specific copy wins. =apply= and =doctor= do not
+manage June; run =june doctor=. See [[https://github.com/suderman/june][suderman/june]].
 
 ** Commands
 

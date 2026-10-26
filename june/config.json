@@ -1,0 +1,9 @@
+{
+  "model": { "provider": "codex-lb", "modelId": "gpt-6-luna", "thinkingLevel": "medium" },
+  "providersFile": "~/.pi/agent/models.json",
+  "contextCap": 200000,
+  "daemonHost": "kit",
+  "skillDirs": ["~/.agents/skills", "~/profile/skills"],
+  "org": { "root": "~/org" },
+  "herdr": { "session": "default", "hosts": { "cog": {}, "lux": {} } }
+}
