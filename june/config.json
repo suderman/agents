@@ -1,7 +1,7 @@
 {
   "model": {
     "provider": "codex-lb",
-    "modelId": "gpt-6-luna",
+    "modelId": "gpt-6.1-sol",
     "thinkingLevel": "medium"
   },
   "providersFile": "~/.pi/agent/models.json",
