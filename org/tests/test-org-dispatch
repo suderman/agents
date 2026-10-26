@@ -17,6 +17,8 @@ export ORG_DISPATCH_HOST=kit
 export ORG_DISPATCH_SETTLE=0
 export ORG_DISPATCH_LOG_KEEP=2
 export PATH="$fixture/bin:$PATH"
+# Some checks load org-dispatch.el directly, without the script that finds NixOS zone data.
+if [[ -z ${TZDIR:-} && ! -d /usr/share/zoneinfo && -d /etc/zoneinfo ]]; then export TZDIR=/etc/zoneinfo; fi
 mkdir -p "$HOME" "$ORG_DISPATCH_ROOT" "$fixture/bin"
 # A failing herdr keeps notifications and pane lookups away from any real server.
 printf '#!/bin/sh\nexit 1\n' >"$fixture/bin/herdr"

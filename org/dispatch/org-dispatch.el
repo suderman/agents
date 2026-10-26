@@ -56,6 +56,11 @@
   "Seconds ahead a retry must be scheduled, so a task cannot spin.")
 
 ;; Calgary time regardless of the host's zone; date-only SCHEDULED is midnight.
+;; libc falls back to UTC without a word when it cannot find the zone, which
+;; dates evenings as tomorrow, so refuse to run instead.
+(let ((zones (or (getenv "TZDIR") "/usr/share/zoneinfo")))
+  (unless (file-readable-p (expand-file-name "America/Edmonton" zones))
+    (error "No zone data for America/Edmonton in %s; set TZDIR" zones)))
 (set-time-zone-rule "America/Edmonton")
 
 (setq org-todo-keywords '((sequence "TODO" "PROG" "EVAL" "HOLD" "|" "DONE")

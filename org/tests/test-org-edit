@@ -99,6 +99,7 @@ check "and keeps DEADLINE" line "$tasks" 'DEADLINE: <2026-11-06 Fri -2d>'
 check "date prints a timestamp" has "$(run date '2026-11-03 9:00-10:30 +1w')" '^<2026-11-03 Tue 09:00-10:30 +1w>$'
 check "date takes a relative day" has "$(run date '+0d')" "^<$(date +'%Y-%m-%d %a')>$"
 check "date refuses words Org would read as today" has "$(run date 'next tuesday')" 'not a date'
+check "missing zone data stops instead of using UTC" has "$(TZDIR=/nonexistent run date '+0d')" 'No zone data for America/Edmonton'
 
 cp "$tasks" "$HOME/org/asana.org"
 check "asana.org is refused" has "$(run todo "$HOME/org/asana.org" Plan DONE)" 'never edit it'
