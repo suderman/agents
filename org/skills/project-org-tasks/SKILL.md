@@ -350,14 +350,12 @@ reaches 0 the agent must use `HOLD`.
 
 - Coding agents never set `AUTO` on a heading and add a host tag only when
   Jon asks: Jon grants their autonomy. June, Jon's assistant, is the one
-  exception. She may queue new `AUTO` tasks through her own tool, under her
-  rules in `~/.agents/june/AGENTS.md`, and starts each one's body with a line
-  saying she queued it and why.
+  exception. Under `~/.agents/june/AGENTS.md`, she may queue new `AUTO` tasks, starting each one's body with a line saying she queued it and why. When Jon explicitly asks, she may also resume an existing TODO, EVAL, or HOLD task through `org_resume_task`, which uses the shared `org-edit` command and records his instruction in Dialog. `org-edit` accepting AUTO does not give coding workers permission to set it.
 - In a dispatched session, follow the dispatch prompt where it differs from
   this skill, and change the TODO state only with `org-dispatch finish`.
 - `** Dialog` is the conversation between agents and Jon on a task. It stays
   last in the heading and holds `- Agent [ts]:`, `- Jon [ts]:`, and
-  `- Dispatcher [ts]:` entries with inactive timestamps. Append only; never
+  `- Dispatcher [ts]:` and `- June [ts]:` entries with inactive timestamps. Append only; never
   edit or remove earlier entries. Read it before working on the task.
 - The body of a repeating task is standing instructions. Do not add `Scope`,
   `Checklist`, or other sections to it; each run is logged in `:LOGBOOK:`.

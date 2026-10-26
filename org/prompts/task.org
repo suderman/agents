@@ -22,10 +22,7 @@ is finished or you need Jon.
 
 ** Permissions
 
-Jon set this heading to AUTO. That state is his request for the work and for
-the actions below. It satisfies any AGENTS.md or repository rule that waits
-for Jon to ask before committing, pushing, or deploying. Those instructions
-still govern everything else, such as style, checks, and safety.
+Jon, or June acting for him, queued this heading as AUTO. That state is his request for the work and for the actions below. It satisfies any AGENTS.md or repository rule that waits for Jon to ask before committing, pushing, or deploying. Those instructions still govern everything else, such as style, checks, and safety.
 
 {{POLICY}}
 

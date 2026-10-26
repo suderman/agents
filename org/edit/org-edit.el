@@ -1,7 +1,7 @@
 ;;; org-edit.el --- Let Org make agents' state and date changes  -*- lexical-binding: t; -*-
 
 ;; Batch entry points, run through the org-edit wrapper:
-;;   org-edit-todo      FILE HEADING STATE
+;;   org-edit-todo      FILE HEADING STATE [--expect STATE] [--request KEY --host HOST --note TEXT]
 ;;   org-edit-schedule  FILE HEADING WHEN
 ;;   org-edit-deadline  FILE HEADING WHEN
 ;;   org-edit-date      WHEN
@@ -13,6 +13,7 @@
 ;; Loading org-dispatch.el shares its TODO keywords and settings.
 
 (require 'org-dispatch)
+(require 'org-id)
 
 ;; Jon's Emacs logs a repeating task's completion; the dispatcher keeps its own run log.
 (setq org-log-repeat 'time
@@ -94,8 +95,9 @@ from its end, or id:UUID. A title containing \" / \" still matches whole."
       (nreverse (or titles paths)))))
 
 
-(defun org-edit--at (file heading function)
-  "Call FUNCTION at the one heading HEADING names in FILE, save, and print it."
+(defun org-edit--at (file heading function &optional quiet)
+  "Call FUNCTION at the one heading HEADING names in FILE and save.
+Print the heading unless QUIET is non-nil."
   (setq file (expand-file-name file))
   (unless (file-regular-p file) (error "no file %s" file))
   (when (string-search ".sync-conflict-" file)
@@ -117,28 +119,71 @@ from its end, or id:UUID. A title containing \" / \" still matches whole."
             ;; Org writes LOGBOOK entries after the command; batch has no command loop.
             (when (memq #'org-add-log-note post-command-hook)
               (org-add-log-note))
-            (when (buffer-modified-p) (save-buffer))
-            (goto-char (car found))
-            (org-back-to-heading t)
-            (princ (buffer-substring-no-properties
-                    (point) (save-excursion (forward-line 1)
-                                            (when (looking-at-p org-planning-line-re)
-                                              (forward-line 1))
-                                            (point))))))
+            (when (buffer-modified-p)
+              (unless (verify-visited-file-modtime buffer)
+                (error "%s changed on disk; read it again before retrying" file))
+              (save-buffer))
+            (unless quiet
+              (goto-char (car found))
+              (org-back-to-heading t)
+              (princ (buffer-substring-no-properties
+                      (point) (save-excursion (forward-line 1)
+                                              (when (looking-at-p org-planning-line-re)
+                                                (forward-line 1))
+                                              (point)))))))
       (kill-buffer buffer))))
 
 (defun org-edit-todo ()
-  "Set the TODO state: FILE HEADING STATE."
-  (pcase-let ((`(,file ,heading ,state) (org-edit--args 3 "todo FILE HEADING STATE")))
-    (setq state (upcase state))
-    (when (equal state "AUTO") (error "only Jon sets AUTO"))
-    (org-edit--at file heading
-                  (lambda ()
-                    ;; Keywords are buffer-local, and a file may set its own.
-                    (unless (member state org-todo-keywords-1)
-                      (error "STATE is one of %s"
-                             (string-join (remove "AUTO" org-todo-keywords-1) " ")))
-                    (org-todo state)))))
+  "Set FILE HEADING to STATE, optionally checking --expect STATE.
+June uses --request KEY --host HOST --note TEXT to resume a task once.
+Coding workers must not set AUTO; that permission lives in instructions."
+  (let* ((args command-line-args-left)
+         (file (pop args)) (heading (pop args)) (state (upcase (or (pop args) "")))
+         expected request host note result)
+    (setq command-line-args-left nil)
+    (unless (and file heading (not (string-empty-p state)))
+      (error "usage: org-edit todo FILE HEADING STATE [--expect STATE] [--request KEY --host HOST --note TEXT]"))
+    (while args
+      (let ((flag (pop args)) (value (pop args)))
+        (unless (and value (not (string-empty-p value))) (error "missing value for %s" flag))
+        (pcase flag
+          ("--expect" (setq expected (upcase value)))
+          ("--request" (setq request value))
+          ("--host" (setq host value))
+          ("--note" (setq note value))
+          (_ (error "unknown option %s" flag)))))
+    (when (or request host note)
+      (unless (and (equal state "AUTO") request host note (member expected '("TODO" "EVAL" "HOLD")))
+        (error "resuming needs AUTO, --expect TODO|EVAL|HOLD, --request, --host, and --note"))
+      (unless (member host org-dispatch-hosts) (error "unknown dispatcher host %s" host))
+      (when (or (string-match-p "[\n\r]" request) (string-match-p "[\n\r]" note))
+        (error "request and note must each be one line")))
+    (org-edit--at
+     file heading
+     (lambda ()
+       ;; A replay never grants AUTO a second time, even after the worker finishes.
+       (let ((replay (and request (equal request (org-entry-get nil "JUNE_REQUEST")))))
+         (unless replay
+           (when (and expected (not (equal expected (org-get-todo-state))))
+             (error "expected %s, found %s; read the task again" expected (org-get-todo-state)))
+           ;; Keywords are buffer-local, and a file may set its own.
+           (unless (member state org-todo-keywords-1)
+             (error "STATE is one of %s" (string-join org-todo-keywords-1 " ")))
+           (when request
+             (org-id-get-create)
+             (org-set-tags (append (seq-difference (org-get-tags nil t) org-dispatch-hosts) (list host)))
+             (org-entry-put nil "JUNE_REQUEST" request)
+             (org-entry-put nil "REVIEW" "yes")
+             (org-entry-put nil "DEPLOY" "no")
+             (org-dispatch--append "Dialog" (org-dispatch--entry "June" note)))
+           (org-todo state))
+         (when request
+           (setq result `((id . ,(org-entry-get nil "ID"))
+                          (title . ,(org-get-heading t t t t))
+                          (host . ,host)
+                          (written . ,(if replay :false t)))))))
+     request)
+    (when request (princ (concat (json-serialize result) "\n")))))
 
 (defun org-edit--planning (keyword usage)
   "Set or remove the KEYWORD planning date: FILE HEADING WHEN, or none."

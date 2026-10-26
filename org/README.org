@@ -78,10 +78,7 @@ org-dispatch finish ID EVAL|HOLD|DONE "note"   # HOLD needs a question
 org-dispatch retry ID WHEN "what it waits for" # only when RETRY > 0
 #+end_src
 
-Jon sets AUTO; dispatched agents never do. June, Jon's assistant, may also
-queue new AUTO tasks under =~/.agents/june/AGENTS.md=. =retry= is the one
-agent exception: it returns a task Jon allowed to retry to AUTO, lowers
-=RETRY=, and schedules it for =WHEN=, at least 15 minutes away.
+Jon sets AUTO; dispatched agents never do. June, Jon's assistant, may queue new AUTO tasks and, when Jon explicitly asks, resume existing TODO, EVAL, or HOLD tasks under =~/.agents/june/AGENTS.md=. They use the same =org-edit= command; instructions define who may grant AUTO. =retry= is the one worker exception: it returns a task Jon allowed to retry to AUTO, lowers =RETRY=, and schedules it for =WHEN=, at least 15 minutes away.
 
 Runtime state lives in =~/.local/state/org-dispatch= on each host and is
 not synced. Repeating tasks keep 14 run entries in =:LOGBOOK:=; older ones
@@ -94,11 +91,13 @@ Agents write headings and body text directly, but leave TODO states,
 =:LOGBOOK:= entries, and weekdays come out as Emacs makes them:
 
 #+begin_src sh
-org-edit todo FILE HEADING STATE            # TODO PROG EVAL HOLD DONE; never AUTO
+org-edit todo FILE HEADING STATE [--expect STATE] # workers never grant AUTO
 org-edit schedule FILE HEADING WHEN|none
 org-edit deadline FILE HEADING WHEN|none
 org-edit date WHEN                          # print an active timestamp
 #+end_src
+
+=--expect STATE= refuses a stale state before saving. June resumes with =org-edit todo FILE HEADING AUTO --expect HOLD --request KEY --host kit --note "Jon chose option A. Resume."=. The expected state must be TODO, EVAL, or HOLD. This saves the state, one local host tag, ID if missing, =JUNE_REQUEST= key, review on, deploy off, and a June entry in Dialog together. It preserves other properties, schedules, and task history. The request key makes a replay return the existing ID without changing the task, even if work has already finished. This form prints JSON rather than the heading. June checks for active linked agents before calling it. Coding workers must not use it to grant AUTO.
 
 =HEADING= is the title without keyword, priority, or tags. When a title
 matches twice, name it by its outline path, matched from the end, such as
