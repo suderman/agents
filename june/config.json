@@ -19,5 +19,11 @@
       "cog": {},
       "lux": {}
     }
+  },
+  "dispatch": {
+    "hosts": [
+      "kit",
+      "cog"
+    ]
   }
 }
