@@ -381,6 +381,7 @@ with NOTE, moving the Sessions links into it, then trim the log."
           :scheduled (org-get-scheduled-time (point))
           :repeat (org-get-repeat)
           :retry (string-to-number (or (org-entry-get nil "RETRY") "0"))
+          :june (org-entry-get nil "JUNE_REQUEST")
           :review (not (equal (downcase (or (org-entry-get nil "REVIEW") "yes")) "no"))
           :deploy (equal (downcase (or (org-entry-get nil "DEPLOY") "no")) "yes")
           :branch (org-entry-get nil "BRANCH")
@@ -692,6 +693,8 @@ with NOTE, moving the Sessions links into it, then trim the log."
   "TASKS this host may launch now, respecting STATES already running.
 A task launches only after its text stays unchanged for
 `org-dispatch-settle' seconds, so a heading still being typed waits.
+June writes a whole heading at once and marks it with JUNE_REQUEST,
+so hers launch without settling.
 DRY-RUN marks waiting tasks with :waiting instead of recording progress."
   (let* ((now (float-time))
          (file (org-dispatch--pending-file))
@@ -725,7 +728,8 @@ DRY-RUN marks waiting tasks with :waiting instead of recording progress."
          ((progn (puthash key entry new) nil))
          ((and (plist-get task :scheduled) (time-less-p now (plist-get task :scheduled))))
          ((seq-find (lambda (s) (equal (plist-get s :id) (plist-get task :id))) running))
-         ((< (- now (gethash "seen" entry)) org-dispatch-settle)
+         ((and (not (plist-get task :june))
+               (< (- now (gethash "seen" entry)) org-dispatch-settle))
           (when dry-run (push (plist-put task :waiting t) eligible)))
          ((seq-find (lambda (s) (equal (plist-get s :dir) (plist-get task :dir)))
                     (append running eligible)))

@@ -69,6 +69,15 @@ check "scan skips AUTO for the other host" lacks "$scan" "The other host"
 check "scan skips AUTO scheduled in the future" lacks "$scan" "Not yet"
 rm -r "$ORG_DISPATCH_ROOT/scan.org" "$ORG_DISPATCH_ROOT/other"
 
+# Settling: a typed heading waits; one June wrote whole launches at once.
+mkdir -p "$ORG_DISPATCH_ROOT/typed" "$ORG_DISPATCH_ROOT/june"
+printf '* AUTO Typed by Jon :kit:\n' >"$ORG_DISPATCH_ROOT/typed/typed.org"
+printf '* AUTO Written by June :kit:\n:PROPERTIES:\n:JUNE_REQUEST: test:1\n:END:\n' >"$ORG_DISPATCH_ROOT/june/june.org"
+scan=$(ORG_DISPATCH_SETTLE=600 run scan | grep $'\t' || true)
+check "scan holds a typed heading while it settles" has "$scan" $'Typed by Jon\t.*\tsettling'
+check "scan launches a June heading without settling" has "$scan" $'Written by June\t.*\tnew'
+rm -r "$ORG_DISPATCH_ROOT/typed" "$ORG_DISPATCH_ROOT/june"
+
 # Retry: allowed, refused, and what it leaves behind.
 retry_file="$ORG_DISPATCH_ROOT/retry.org"
 cat >"$retry_file" <<'EOF'
