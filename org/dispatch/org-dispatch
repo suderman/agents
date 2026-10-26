@@ -9,6 +9,9 @@ set -euo pipefail
 #   org-dispatch retry ID WHEN NOTE    return a task Jon allowed to retry to AUTO at WHEN
 # The Nix wrapper sets ORG_DISPATCH_EL; from a checkout, use the file beside this one.
 : "${ORG_DISPATCH_EL:=$(dirname "$(readlink -f "$0")")/org-dispatch.el}"
+# org-dispatch.el pins Calgary time; without zone data Emacs silently runs in UTC,
+# so evenings would date tomorrow. NixOS keeps zones in /etc/zoneinfo, not the libc default.
+if [[ -z ${TZDIR:-} && ! -d /usr/share/zoneinfo && -d /etc/zoneinfo ]]; then export TZDIR=/etc/zoneinfo; fi
 batch=(emacs -Q --batch -l "$ORG_DISPATCH_EL")
 
 case ${1:-run} in

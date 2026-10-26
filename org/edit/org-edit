@@ -16,6 +16,9 @@ set -euo pipefail
 here="$(dirname "$(readlink -f "$0")")"
 : "${ORG_EDIT_EL:=$here/org-edit.el}"
 : "${ORG_DISPATCH_EL:=$here/../dispatch/org-dispatch.el}"
+# org-dispatch.el pins Calgary time; without zone data Emacs silently runs in UTC,
+# so evenings would date tomorrow. NixOS keeps zones in /etc/zoneinfo, not the libc default.
+if [[ -z ${TZDIR:-} && ! -d /usr/share/zoneinfo && -d /etc/zoneinfo ]]; then export TZDIR=/etc/zoneinfo; fi
 batch=(emacs -Q --batch -L "$(dirname "$ORG_DISPATCH_EL")" -l "$ORG_EDIT_EL")
 
 case ${1:-} in
