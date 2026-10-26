@@ -78,9 +78,10 @@ org-dispatch finish ID EVAL|HOLD|DONE "note"   # HOLD needs a question
 org-dispatch retry ID WHEN "what it waits for" # only when RETRY > 0
 #+end_src
 
-Only Jon sets AUTO. =retry= is the one exception: it returns a task Jon
-allowed to retry to AUTO, lowers =RETRY=, and schedules it for =WHEN=, at
-least 15 minutes away.
+Jon sets AUTO; dispatched agents never do. June, Jon's assistant, may also
+queue new AUTO tasks under =~/.agents/june/AGENTS.md=. =retry= is the one
+agent exception: it returns a task Jon allowed to retry to AUTO, lowers
+=RETRY=, and schedules it for =WHEN=, at least 15 minutes away.
 
 Runtime state lives in =~/.local/state/org-dispatch= on each host and is
 not synced. Repeating tasks keep 14 run entries in =:LOGBOOK:=; older ones

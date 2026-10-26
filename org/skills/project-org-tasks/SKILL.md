@@ -347,8 +347,11 @@ agent runs `org-dispatch retry ID WHEN NOTE`. The dispatcher then lowers
 task to `AUTO`, and a fresh session picks it up when it is due. Once `RETRY`
 reaches 0 the agent must use `HOLD`.
 
-- Never set `AUTO` on a heading. Only Jon grants autonomy. Add a host tag
-  only when Jon asks.
+- Coding agents never set `AUTO` on a heading and add a host tag only when
+  Jon asks: Jon grants their autonomy. June, Jon's assistant, is the one
+  exception. She may queue new `AUTO` tasks through her own tool, under her
+  rules in `~/.agents/june/AGENTS.md`, and starts each one's body with a line
+  saying she queued it and why.
 - In a dispatched session, follow the dispatch prompt where it differs from
   this skill, and change the TODO state only with `org-dispatch finish`.
 - `** Dialog` is the conversation between agents and Jon on a task. It stays
