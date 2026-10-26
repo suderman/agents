@@ -59,23 +59,29 @@ EOF
 }
 
 # Open a focused tab in DIR and print its pane. org-dispatch names its pi
-# sessions "auto · HEADING"; those go in the auto workspace under the same tab
-# label org-dispatch gives them, so reopened runs sit beside new ones.
+# sessions "auto · HEADING" and opens them in the workspace named for the task's
+# Org file, its project; a reopened run goes back there under the same tab label.
+# The Org file is the one whose Sessions link names this session.
 open_tab() {
-  local dir=$1 label workspace created
-  if [[ $name != "auto · "* ]]; then
+  local dir=$1 label project= workspace created
+  if [[ $name == "auto · "* ]]; then
+    project=$(grep -rlF --include='*.org' --exclude='archive*' --exclude='*.sync-conflict-*' \
+      ":$session@" "$HOME/org" 2>/dev/null | head -n1 || true)
+    [[ -z $project ]] || project=$(basename "$project" .org)
+  fi
+  if [[ -z $project ]]; then
     on_host herdr tab create --cwd "$dir" --focus | jq -r .result.root_pane.pane_id
     return
   fi
   label=${name#auto · }
   label=${label:0:40}
-  workspace=$(on_host herdr workspace list | jq -r '
-    first(.result.workspaces[] | select(.label | test("^(\\[[0-9]+\\] )?auto$"; "i")) | .workspace_id) // empty')
+  workspace=$(on_host herdr workspace list | jq -r --arg project "$project" '
+    first(.result.workspaces[] | select(.label | ascii_downcase | sub("^\\[[0-9]+\\] "; "") == ($project | ascii_downcase)) | .workspace_id) // empty')
   if [[ -n $workspace ]]; then
     on_host herdr tab create --workspace "$workspace" --cwd "$dir" --label "$label" --focus |
       jq -r .result.root_pane.pane_id
   else
-    created=$(on_host herdr workspace create --cwd "$dir" --label auto --focus)
+    created=$(on_host herdr workspace create --cwd "$dir" --label "$project" --focus)
     on_host herdr tab rename "$(jq -r .result.root_pane.tab_id <<<"$created")" "$label" >/dev/null
     jq -r .result.root_pane.pane_id <<<"$created"
   fi

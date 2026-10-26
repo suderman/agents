@@ -124,4 +124,7 @@ org/tests/test-org-edit
 
 The tests need =emacs= on =PATH= and use temporary Org files and state. A
 fake =herdr= that always fails keeps the dispatcher test away from any
-running server.
+running server; another that records its calls checks that a run opens in
+the Herdr workspace named for its Org file, which is its project for a
+=work/<domain>/<project>/<project>.org= file, and that =herdr-link= reopens
+a dispatched session there.

@@ -127,12 +127,13 @@
                    (org-dispatch--get agent 'pane_id)))
             (org-dispatch--get (org-dispatch--herdr "agent" "list") 'result 'agents)))
 
-(defun org-dispatch--auto-pane (dir label)
-  "Open a tab named LABEL in DIR in the auto workspace and return its root pane.
+(defun org-dispatch--project-pane (dir label project)
+  "Open a tab named LABEL in DIR in workspace PROJECT and return its root pane.
 Create the workspace when it is missing; its first tab then hosts the task."
   (let* ((workspace (seq-some (lambda (ws)
-                                (and (string-match-p "\\`\\(?:\\[[0-9]+\\] \\)?auto\\'"
-                                                     (or (alist-get 'label ws) ""))
+                                (and (string-match-p
+                                      (concat "\\`\\(?:\\[[0-9]+\\] \\)?" (regexp-quote project) "\\'")
+                                      (or (alist-get 'label ws) ""))
                                      (alist-get 'workspace_id ws)))
                               (org-dispatch--get (org-dispatch--herdr "workspace" "list")
                                                  'result 'workspaces)))
@@ -141,7 +142,7 @@ Create the workspace when it is missing; its first tab then hosts the task."
                     (org-dispatch--herdr "tab" "create" "--workspace" workspace "--cwd" dir
                                          "--label" label "--no-focus")
                   (org-dispatch--herdr "workspace" "create" "--cwd" dir
-                                       "--label" "auto" "--no-focus"))
+                                       "--label" project "--no-focus"))
                 'result 'root_pane)))
     (unless workspace
       (org-dispatch--herdr "tab" "rename" (alist-get 'tab_id pane) label))
@@ -564,9 +565,11 @@ with NOTE, moving the Sessions links into it, then trim the log."
     (condition-case err
         (progn
           (unless pane
-            (let ((created (org-dispatch--auto-pane
+            ;; A project file is named for its project, so this matches Jon's workspaces.
+            (let ((created (org-dispatch--project-pane
                             (plist-get task :dir)
-                            (truncate-string-to-width (plist-get task :heading) 40))))
+                            (truncate-string-to-width (plist-get task :heading) 40)
+                            (file-name-base (plist-get task :file)))))
               (setq pane (alist-get 'pane_id created)
                     tab (alist-get 'tab_id created)))
             (apply #'org-dispatch--herdr "agent" "start"

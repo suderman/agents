@@ -192,6 +192,64 @@ check "the prompt omits retry at RETRY 0" lacks "$(render 0 '')" "org-dispatch r
 check "the prompt omits retry for a repeat" lacks "$(render 2 'SCHEDULED: <2026-10-15 Thu 04:30 +1d>\n')" "org-dispatch retry 0000"
 check "the prompt fills every placeholder" lacks "$(render 2 '')" "{{"
 
+# Workspaces: a run opens in the workspace named for its Org file, never a shared "auto" one.
+# This fake herdr records its arguments and answers with fixed panes.
+cat >"$fixture/bin/herdr" <<'EOF'
+#!/usr/bin/env bash
+[[ $1 == --session ]] && shift 2
+echo "$*" >>"$FAKE_HERDR_LOG"
+case "$1 $2" in
+  "workspace list") printf '{"result":{"workspaces":%s}}\n' "$FAKE_WORKSPACES" ;;
+  "workspace create") echo '{"result":{"root_pane":{"pane_id":"p-new","tab_id":"t-new"}}}' ;;
+  "tab create") echo '{"result":{"root_pane":{"pane_id":"p-tab","tab_id":"t-tab"}}}' ;;
+  "pane run") touch "$FAKE_HERDR_LOG.started" ;;
+  "agent list")
+    if [[ -e $FAKE_HERDR_LOG.started ]]; then
+      printf '{"result":{"agents":[{"pane_id":"p-live","agent_session":{"agent":"pi","value":"x_%s.jsonl"}}]}}\n' "$FAKE_SESSION"
+    else echo '{"result":{"agents":[]}}'; fi ;;
+  *) echo '{}' ;;
+esac
+EOF
+chmod +x "$fixture/bin/herdr"
+export FAKE_HERDR_LOG="$fixture/herdr.log"
+pane_in() {
+  rm -f "$FAKE_HERDR_LOG" "$FAKE_HERDR_LOG.started"
+  FAKE_WORKSPACES=$1 emacs -Q --batch -l "$org/dispatch/org-dispatch.el" --eval "
+    (princ (alist-get 'pane_id (org-dispatch--project-pane \"/tmp\" \"Fix the thing\" \"june\")))" 2>/dev/null
+  echo
+  cat "$FAKE_HERDR_LOG"
+}
+calls=$(pane_in '[{"label":"[4] auto","workspace_id":"w-auto"},{"label":"[8] june","workspace_id":"w-june"}]')
+check "a run opens as a tab in its project's workspace" has "$calls" "^tab create --workspace w-june --cwd /tmp --label Fix the thing --no-focus$"
+check "a run skips the auto workspace" lacks "$calls" "w-auto"
+check "the tab's pane is returned" has "$calls" "^p-tab$"
+calls=$(pane_in '[{"label":"[4] auto","workspace_id":"w-auto"},{"label":"[5] junebug","workspace_id":"w-bug"}]')
+check "a missing project workspace is created under its name" has "$calls" "^workspace create --cwd /tmp --label june --no-focus$"
+check "only an exact project name matches" lacks "$calls" "w-bug"
+check "the new workspace's tab takes the heading" has "$calls" "^tab rename t-new Fix the thing$"
+
+# herdr-link reopens a dispatched session in the workspace of the Org file that links it.
+export FAKE_SESSION=01234567-89ab-cdef-0123-456789abcdef
+mkdir -p "$HOME/.pi/agent/sessions/x" "$HOME/org/work/suderman/june"
+printf '{"type":"session","cwd":"/tmp"}\n{"type":"session_info","name":"auto · Fix the thing"}\n' \
+  >"$HOME/.pi/agent/sessions/x/2026_$FAKE_SESSION.jsonl"
+printf '* EVAL Fix the thing\n** Sessions\n- [[herdr:kit/pi:%s@w1:p1][pi@kit/2026-10-26T1500]]\n' "$FAKE_SESSION" \
+  >"$HOME/org/work/suderman/june/june.org"
+reopen() {
+  rm -f "$FAKE_HERDR_LOG" "$FAKE_HERDR_LOG.started"
+  FAKE_WORKSPACES=$1 "$org/bin/herdr-link" attach "herdr:$(</proc/sys/kernel/hostname)/pi:$FAKE_SESSION@w1:p1" >/dev/null 2>&1 || true
+  cat "$FAKE_HERDR_LOG"
+}
+calls=$(reopen '[{"label":"[4] auto","workspace_id":"w-auto"},{"label":"[8] June","workspace_id":"w-june"}]')
+check "herdr-link reopens in the linking file's workspace" has "$calls" "^tab create --workspace w-june --cwd /tmp --label Fix the thing --focus$"
+check "herdr-link attaches to the resumed pane" has "$calls" "^agent attach p-live --takeover$"
+calls=$(reopen '[]')
+check "herdr-link creates the project workspace when missing" has "$calls" "^workspace create --cwd /tmp --label june --focus$"
+rm "$HOME/org/work/suderman/june/june.org"
+calls=$(reopen '[{"label":"[8] june","workspace_id":"w-june"}]')
+check "herdr-link without a linking file opens in the current workspace" has "$calls" "^tab create --cwd /tmp --focus$"
+printf '#!/bin/sh\nexit 1\n' >"$fixture/bin/herdr"
+
 # The source byte-compiles without warnings.
 cp "$org/dispatch/org-dispatch.el" "$fixture/org-dispatch.el"
 compile=$(emacs -Q --batch --eval '(setq byte-compile-error-on-warn t)' -f batch-byte-compile "$fixture/org-dispatch.el" 2>&1 | grep -v '^Loading' || true)
