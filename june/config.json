@@ -1,6 +1,6 @@
 {
   "model": {
-    "provider": "codex-lb",
+    "provider": "cliproxyapi",
     "modelId": "gpt-6.1-sol",
     "thinkingLevel": "medium"
   },

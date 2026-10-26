@@ -6,6 +6,10 @@ providers:
     base_url: https://codex-lb.kit/v1
     key_env: CODEX_LB_API_KEY
     api_mode: codex_responses
+  cliproxyapi:
+    base_url: https://cliproxyapi.kit/v1
+    key_env: CLIPROXYAPI_API_KEY
+    api_mode: codex_responses
 agent:
   reasoning_effort: high
 browser:
