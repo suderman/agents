@@ -2,7 +2,11 @@
   "model": {
     "provider": "cliproxyapi",
     "modelId": "gpt-6.1-terra",
-    "thinkingLevel": "medium"
+    "thinkingLevel": "medium",
+    "focus": {
+      "modelId": "gpt-6.1-sol",
+      "thinkingLevel": "medium"
+    }
   },
   "providersFile": "~/.pi/agent/models.json",
   "contextCap": 200000,
