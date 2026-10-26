@@ -459,7 +459,7 @@ with NOTE, moving the Sessions links into it, then trim the log."
    (delq nil
          (list
           (if (plist-get task :review)
-              "- Jon reviews this task. Finish with EVAL, never DONE."
+              "- Jon or an agent he delegates reviews this task. Finish with EVAL, never DONE."
             "- No review is needed. Finish with DONE once your verification passes.")
           (let ((where (if (org-dispatch--git-p (plist-get task :dir))
                            "your work"

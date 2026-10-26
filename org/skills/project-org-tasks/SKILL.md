@@ -194,7 +194,7 @@ States describe the task from Jon's point of view:
 - `TODO`: captured, not started. Jon's to do or to hand on.
 - `AUTO`: queued for an unattended agent; see "Autonomous tasks".
 - `PROG`: active investigation or implementation.
-- `EVAL`: ready for Jon to evaluate, review, or accept.
+- `EVAL`: ready for review or acceptance by Jon or an agent he delegates.
 - `HOLD`: Jon cannot act on it now, for any reason: an external dependency,
   client approval or feedback, limited bandwidth, or a deliberate pause.
   Record the reason and any known condition for resuming; never invent one.
