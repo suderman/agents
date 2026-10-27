@@ -1,11 +1,16 @@
 {
   "model": {
-    "provider": "cliproxyapi",
-    "modelId": "gpt-6.1-terra",
-    "thinkingLevel": "medium",
+    "chat": {
+      "provider": "cliproxyapi",
+      "modelId": "gpt-6.1-terra",
+      "thinkingLevel": "medium"
+    },
     "focus": {
       "modelId": "gpt-6.1-sol",
       "thinkingLevel": "medium"
+    },
+    "patter": {
+      "modelId": "gpt-6-luna"
     }
   },
   "providersFile": "~/.pi/agent/models.json",
