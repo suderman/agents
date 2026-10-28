@@ -1,4 +1,7 @@
 {
+  "user": {
+    "name": "Jon"
+  },
   "model": {
     "chat": {
       "provider": "cliproxyapi",
