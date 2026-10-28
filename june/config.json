@@ -53,6 +53,7 @@
     "everyMinutes": 60,
     "chattingMinutes": 15
   },
+  "mail": { "enabled": true, "query": "tag:inbox and tag:unread", "accounts": { "suderman": "home", "nonfiction": "work" } },
   "patter": {
     "openAfterSeconds": 8,
     "gapsSeconds": [
