@@ -23,6 +23,14 @@
       "ref": "main",
       "name": "web-design-guidelines",
       "git": "https://github.com/vercel-labs/agent-skills.git"
+    },
+    {
+      "name": "org-triage",
+      "local": "~/src/suderman/june/skills/org-triage"
+    },
+    {
+      "name": "project-org-tasks",
+      "local": "~/src/suderman/june/skills/project-org-tasks"
     }
   ]
 }

@@ -13,7 +13,6 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── skills.lock         exact upstream Git commits
 ├── skills/             generated community content, ignored by Git
 ├── pi/                 Pi configuration and bootstrap
-├── org/                Org agent system: dispatcher, prompts, herdr-link, skills
 ├── opencode/           OpenCode configuration and bootstrap
 ├── hermes/             Hermes configuration and bootstrap
 ├── june/               June's config.json and AGENTS.md, copied to ~/.config/june
@@ -30,10 +29,16 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 
 Commit community selections and their lock, not downloaded skills. Do not edit
 =skills/= by hand. Personal content has its own ownership and synchronization;
-this repository does not pull, commit, or push =~/profile=. The exceptions
-are =project-org-tasks= and =org-triage=: they live in =org/skills/=, and
-=~/profile/skills= links to them. See [[file:org/README.org][org/README.org]]. There is no
-=~/profile/agents/= layer. The =recall-history= personal skill remains a symlink
+this repository does not pull, commit, or push =~/profile=. There is no
+=~/profile/agents/= layer.
+
+=skills.json= may also list a local skill, ={"name": ..., "local": path}=, that
+another checkout owns. =agents apply= links it into =skills/= beside the
+community skills; it is never fetched or locked, and a host without that
+checkout goes without it. =project-org-tasks= and =org-triage= are local
+skills from =~/src/suderman/june/skills=: June owns the Org agent system, its
+dispatcher, =org-edit=, and =herdr-link= included, since 2026-10-28. See
+[[https://github.com/suderman/june/blob/main/org/README.org][June's org/README.org]]. The =recall-history= personal skill remains a symlink
 to its independently maintained Recall checkout. That checkout must be present
 on any machine using that link.
 
@@ -356,7 +361,6 @@ opencode/test-bootstrap
 hermes/test-bootstrap
 tests/test-prompts
 tests/test-update-flake-lock
-org/tests/test-org-dispatch
 #+end_src
 
 Fixtures use temporary homes and local Git repositories. They cover locked

@@ -105,6 +105,31 @@ class SkillsTests(unittest.TestCase):
         self.run_command("check")
         self.assertEqual((self.root / "skills.lock").read_bytes(), before)
 
+    def test_local_skill_links_its_checkout_unlocked_and_is_skipped_where_absent(self):
+        checkout = self.home / "src/june/skills/tasks"
+        self.add_skill(checkout, "tasks")
+        local = {"name": "tasks", "local": "~/src/june/skills/tasks"}
+        self.select(self.entry, local)
+        self.run_command("update")
+        self.assertEqual([entry["name"] for entry in self.lock()], ["alpha"], "a local skill is never locked")
+        link = self.root / "skills/tasks"
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(Path(os.readlink(link)), checkout)
+        (checkout / "SKILL.md").write_text("---\nname: tasks\ndescription: Edited in place\n---\n")
+        self.run_command("check")
+        self.assertIn("tasks\tlocal", self.run_command("list").stdout)
+        self.personal.joinpath("tasks").symlink_to(checkout)
+        self.run_command("check", error="community/personal skill name collision: tasks")
+        self.personal.joinpath("tasks").unlink()
+        link.unlink()
+        link.symlink_to(self.work)
+        self.run_command("check", error="tasks: link does not point at")
+        shutil.rmtree(self.home / "src")
+        result = self.run_command("materialize")
+        self.assertIn("not on this host; skipped", result.stderr)
+        self.assertFalse((self.root / "skills/tasks").exists())
+        self.run_command("check")
+
     def test_locked_reproduction_and_repeat_runs(self):
         self.run_command("update")
         before = self.snapshot()
