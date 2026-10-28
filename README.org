@@ -16,7 +16,7 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── org/                Org agent system: dispatcher, prompts, herdr-link, skills
 ├── opencode/           OpenCode configuration and bootstrap
 ├── hermes/             Hermes configuration and bootstrap
-├── june/               June defaults and operating rules, read in place
+├── june/               June's config.json and AGENTS.md, copied to ~/.config/june
 ├── claude/             Claude preferences, instructions, and managed-entry adapter
 ├── lib/                resolver and deployment helpers
 ├── tests/              isolated local fixtures
@@ -43,7 +43,7 @@ on any machine using that link.
 | OpenCode | =~/.config/opencode= | =opencode.json skills.paths= |
 | Hermes | =~/.hermes= | =config.yaml skills.external_dirs= |
 | Claude Code | =~/.claude= | Managed individual links under =skills/= |
-| June | =~/.local/state/june= | =june/config.json skillDirs= paths |
+| June | =~/.config/june= | =june/config.json skillDirs= paths |
 
 Pi, OpenCode, Hermes, and June refer to =~/.agents/skills= and =~/profile/skills=
 in place. Their native local skill directories remain active and untouched.
@@ -52,12 +52,7 @@ links to these same sources, not a link over the whole native =skills/= director
 Native skills, synced skills, plugins, auth, sessions, and memories remain
 harness-owned. Shared names must not collide with personal or native skill names.
 
-June has no bootstrap. The NixOS module sets =JUNE_CONFIG_PATH= so she reads
-=june/config.json= and =june/AGENTS.md= from this checkout, then =~/profile/june/=
-for her =SOUL.md= and personal settings, then =~/.config/june/= on the machine.
-=config.json= files merge in that order; for the other files the most specific
-copy wins. Her skill roots are =skillDirs= in =june/config.json=. =apply= and =doctor= do not
-manage June; run =june doctor=. See [[https://github.com/suderman/june][suderman/june]].
+June's bootstrap copies =june/config.json= and =june/AGENTS.md= whole into =~/.config/june=, the only configuration she reads; she never writes them, so nothing is merged. The machine's daemon host and Telegram users come from the NixOS module as environment variables, and the bootstrap refuses a =config.json= that sets them. Her identity, memory, and journal are data, in =~/.local/share/june=, outside this repository. Her skill roots are =skillDirs= in =june/config.json=. =june doctor= checks the running daemon. See [[https://github.com/suderman/june][suderman/june]].
 
 ** Commands
 

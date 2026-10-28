@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 skills = runpy.run_path(str(ROOT / "lib/skills"))
 mcp = runpy.run_path(str(ROOT / "lib/mcp.py"))
-HARNESSES = ("pi", "opencode", "hermes", "claude")
+HARNESSES = ("pi", "opencode", "hermes", "claude", "june")
 
 
 def run(*args, capture=False):
@@ -25,7 +25,7 @@ def run(*args, capture=False):
 def enabled():
     names = os.environ.get("AGENTS_HARNESSES", ",".join(HARNESSES)).replace(",", " ").split()
     if not names or len(names) != len(set(names)) or set(names) - set(HARNESSES):
-        raise ValueError("AGENTS_HARNESSES must list unique names: pi opencode hermes claude")
+        raise ValueError("AGENTS_HARNESSES must list unique names: pi opencode hermes claude june")
     return names
 
 
@@ -38,6 +38,7 @@ def destinations():
                          Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "opencode"),
         "hermes": Path(env.get("HERMES_HOME") or home / ".hermes"),
         "claude": Path(env.get("CLAUDE_CONFIG_DIR") or home / ".claude"),
+        "june": Path(env.get("JUNE_CONFIG_DIR") or Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "june"),
     }
 
 
@@ -54,8 +55,8 @@ def validate_prompts():
 def native_collisions(names, entries):
     shared = {entry["name"] for entry in entries} | set(skills["personal_skills"]())
     for name in names:
-        if name == "claude":
-            continue  # Its adapter distinguishes managed links from native entries.
+        if name in ("claude", "june"):
+            continue  # Claude's adapter distinguishes managed links from native entries; June has no native skills.
         root = destinations()[name] / "skills"
         for path in set(root.rglob("SKILL.md")) | set(root.glob("*/SKILL.md")):
             match = re.search(r"^name:\s*['\"]?([a-z0-9-]+)['\"]?\s*$", path.read_text(), re.MULTILINE)
@@ -88,6 +89,13 @@ def verify(name, destination):
     source = ROOT / name
     if name == "claude":
         run(str(source / "bootstrap"), "--verify")
+        return
+    if name == "june":
+        # Copied whole: June reads these and never writes them.
+        for relative in ["config.json", "AGENTS.md"]:
+            target = destination / relative
+            if target.is_symlink() or target.read_bytes() != (source / relative).read_bytes():
+                raise ValueError(f"june: deployment mismatch: {target}")
         return
     if name == "hermes":
         actual = json.loads(run("yq", "-o=json", ".", str(destination / "config.yaml"), capture=True))

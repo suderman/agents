@@ -35,7 +35,7 @@ class AgentsTests(unittest.TestCase):
         self.home = self.work / "home"
         self.root = self.home / ".agents"
         self.root.mkdir(parents=True)
-        for name in ["lib", "pi", "opencode", "hermes", "claude"]:
+        for name in ["lib", "pi", "opencode", "hermes", "claude", "june"]:
             shutil.copytree(REPO / name, self.root / name)
         shutil.copy2(REPO / "agents", self.root / "agents")
         # Optional servers depend on the host PATH; tests declare their own.
@@ -50,8 +50,8 @@ class AgentsTests(unittest.TestCase):
                     "XDG_STATE_HOME": str(self.home / ".local/state"), "GIT_CONFIG_GLOBAL": "/dev/null",
                     "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
                     "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
-                    "AGENTS_HARNESSES": "pi,opencode,hermes,claude"}
-        for variable in ["PI_CODING_AGENT_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_DIR", "HERMES_HOME", "CLAUDE_CONFIG_DIR"]:
+                    "AGENTS_HARNESSES": "pi,opencode,hermes,claude,june"}
+        for variable in ["PI_CODING_AGENT_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_DIR", "HERMES_HOME", "CLAUDE_CONFIG_DIR", "JUNE_CONFIG_DIR"]:
             self.env.pop(variable, None)
         self.upstream = self.work / "upstream"
         self.upstream.mkdir()
@@ -237,6 +237,18 @@ class AgentsTests(unittest.TestCase):
                 self.command("apply", error="collision")
                 self.assertEqual(before, snapshot(self.home))
                 shutil.rmtree(target)
+
+    def test_june_gets_her_config_copied_and_refuses_machine_settings(self):
+        self.command("apply")
+        runtime = self.home / ".config/june"
+        for name in ["config.json", "AGENTS.md"]:
+            self.assertFalse((runtime / name).is_symlink())
+            self.assertEqual((runtime / name).read_bytes(), (self.root / "june" / name).read_bytes())
+        before = snapshot(runtime)
+        config = json.loads((self.root / "june/config.json").read_text())
+        self.write("june/config.json", {**config, "daemonHost": "kit"})
+        self.command("apply", error="without daemonHost or telegram")
+        self.assertEqual(before, snapshot(runtime))
 
     def test_claude_pretrusts_home_roots_and_repositories(self):
         src = self.home / "src"

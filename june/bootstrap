@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+source_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+runtime_dir="${JUNE_CONFIG_DIR:-$config_home/june}"
+
+# shellcheck source=../lib/runtime.sh
+source "$source_dir/../lib/runtime.sh"
+validate_runtime_destination "$runtime_dir" "$source_dir/.."
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != --check ) ]]; then
+  echo "Use bootstrap [--check]" >&2
+  exit 1
+fi
+
+copy_file() {
+  local source="$1"
+  local target="$2"
+  local temporary
+
+  if [[ ! -L "$target" && -f "$target" ]] && cmp -s -- "$source" "$target"; then
+    return
+  fi
+
+  temporary="$(mktemp "${target}.tmp.XXXXXX")"
+  trap 'rm -f -- "$temporary"' RETURN
+  cp --dereference -- "$source" "$temporary"
+  chmod 0644 -- "$temporary"
+  mv -fT -- "$temporary" "$target"
+  trap - RETURN
+}
+
+command -v jq >/dev/null || {
+  echo "June bootstrap requires jq" >&2
+  exit 1
+}
+
+# The machine's daemon host and Telegram users come from the NixOS module, and June refuses them here.
+jq -e 'type == "object" and (has("daemonHost") or has("telegram") | not)' "$source_dir/config.json" >/dev/null || {
+  echo "june/config.json must be an object without daemonHost or telegram" >&2
+  exit 1
+}
+[[ "${1:-}" != --check ]] || exit 0
+
+# June only reads these, so they are copied whole rather than merged.
+mkdir -p -- "$runtime_dir"
+for file in config.json AGENTS.md; do
+  copy_file "$source_dir/$file" "$runtime_dir/$file"
+done
