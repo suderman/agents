@@ -35,12 +35,20 @@
       "cog"
     ]
   },
+  "rhythm": {
+    "wake": "05:00",
+    "quiet": "22:00",
+    "sleep": "01:00"
+  },
   "reflection": {
     "enabled": true,
-    "start": "03:00",
-    "end": "06:00",
     "quietMinutes": 60,
     "recentDays": 3
+  },
+  "heartbeat": {
+    "enabled": true,
+    "everyMinutes": 60,
+    "chattingMinutes": 15
   },
   "patter": {
     "openAfterSeconds": 8,
