@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Resolve selected community Git skills without changing personal or harness content.
 
-A local entry, {"name": ..., "local": path}, links a skill another checkout owns, such as June's, into the same tree.
-It is never fetched or locked; a host without that checkout simply goes without the skill."""
+A local entry, {"name": ..., "local": path or [paths]}, links a skill another checkout owns, such as June's, into the
+same tree: the first path present on this host wins, such as a writable checkout before a pinned copy. It is never
+fetched or locked; a host with none of the paths goes without the skill."""
 
 import argparse
 import hashlib
@@ -48,12 +49,20 @@ def parse_declarations(data, filename, locked=False):
     allowed = {"name", "git", "path", "ref"} | ({"revision"} if locked else set())
     for entry in data["skills"]:
         if isinstance(entry, dict) and "local" in entry:
-            if set(entry) != {"name", "local"} or not all(isinstance(v, str) and v.strip() for v in entry.values()):
-                raise ValueError(f"{filename}: a local skill needs only name and local")
+            paths = entry.get("local")
+            paths = [paths] if isinstance(paths, str) else paths
+            if (
+                set(entry) != {"name", "local"}
+                or not isinstance(entry["name"], str)
+                or not isinstance(paths, list)
+                or not paths
+                or not all(isinstance(path, str) and path.strip() for path in paths)
+            ):
+                raise ValueError(f"{filename}: a local skill needs only name and local, a path or a list of paths")
             if not NAME.fullmatch(entry["name"]) or entry["name"] in names:
                 raise ValueError(f"invalid or duplicate skill name: {entry['name']}")
-            if not (entry["local"].startswith("/") or entry["local"].startswith("~/")):
-                raise ValueError(f"{entry['name']}: local must be an absolute or ~/ path")
+            if not all(path.startswith("/") or path.startswith("~/") for path in paths):
+                raise ValueError(f"{entry['name']}: local paths must be absolute or start with ~/")
             names.add(entry["name"])
             entries.append(dict(entry))
             continue
@@ -92,14 +101,19 @@ def parse_declarations(data, filename, locked=False):
     return sorted(entries, key=lambda entry: entry["name"])
 
 
+def candidates(entry):
+    paths = entry["local"]
+    return [Path(os.path.expanduser(path)) for path in ([paths] if isinstance(paths, str) else paths)]
+
+
 def local(entry):
-    """The source a local entry links to, or None for a Git entry."""
-    return Path(os.path.expanduser(entry["local"])) if "local" in entry else None
+    """The source a local entry links to: its first path present on this host, else None."""
+    return next((path for path in candidates(entry) if path.is_dir()), None)
 
 
 def present(entries):
-    """The entries this host can install: every Git skill, and local ones whose checkout is here."""
-    return [entry for entry in entries if "local" not in entry or local(entry).is_dir()]
+    """The entries this host can install: every Git skill, and local ones with a path present here."""
+    return [entry for entry in entries if "local" not in entry or local(entry) is not None]
 
 
 def locked_entries(manifest):
@@ -181,7 +195,7 @@ def check_tree(entries):
     links = {entry["name"] for entry in entries if "local" in entry}
     for entry in entries:
         if entry["name"] in links and Path(os.readlink(target / entry["name"])) != local(entry):
-            raise ValueError(f"{entry['name']}: link does not point at {entry['local']}; run agents apply")
+            raise ValueError(f"{entry['name']}: link does not point at {local(entry)}; run agents apply")
         validate_skill(target / entry["name"], entry["name"])
     state = json.loads((target / ".state.json").read_text())
     if state != {"skills": entries, "tree": tree_state(target, links)}:
@@ -262,8 +276,8 @@ def realize(entries, update, select=False):
         fetched = {}
         for entry in entries:
             if "local" in entry:
-                if not local(entry).is_dir():
-                    print(f"{entry['name']}: {entry['local']} is not on this host; skipped", file=sys.stderr)
+                if local(entry) is None:
+                    print(f"{entry['name']}: none of its local paths is on this host; skipped", file=sys.stderr)
                     continue
                 validate_skill(local(entry), entry["name"])
                 (staged / entry["name"]).symlink_to(local(entry))
@@ -343,7 +357,7 @@ def main():
             print("NAME\tREF\tREVISION\tGIT\tPATH")
             for entry in entries:
                 if "local" in entry:
-                    print("\t".join([entry["name"], "local", "-", "-", entry["local"]]))
+                    print("\t".join([entry["name"], "local", "-", "-", " ".join(map(str, candidates(entry)))]))
                     continue
                 print(
                     "\t".join(

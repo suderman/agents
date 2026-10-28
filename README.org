@@ -32,11 +32,14 @@ Commit community selections and their lock, not downloaded skills. Do not edit
 this repository does not pull, commit, or push =~/profile=. There is no
 =~/profile/agents/= layer.
 
-=skills.json= may also list a local skill, ={"name": ..., "local": path}=, that
-another checkout owns. =agents apply= links it into =skills/= beside the
-community skills; it is never fetched or locked, and a host without that
-checkout goes without it. =project-org-tasks= and =org-triage= are local
-skills from =~/src/suderman/june/skills=: June owns the Org agent system, its
+=skills.json= may also list a local skill, ={"name": ..., "local": [paths]}=,
+that another checkout owns. =agents apply= links it into =skills/= beside the
+community skills from the first path present on the host; it is never fetched
+or locked, and a host with none of the paths goes without it. =project-org-tasks=
+and =org-triage= are local skills: =~/src/suderman/june/skills= when June's
+checkout is there, so edits apply at once, otherwise the pinned copy June's
+NixOS module places at =~/.config/june/skills=. After cloning the checkout,
+=agents doctor= reports the link as stale until =agents apply= repoints it. June owns the Org agent system, its
 dispatcher, =org-edit=, and =herdr-link= included, since 2026-10-28. See
 [[https://github.com/suderman/june/blob/main/org/README.org][June's org/README.org]]. The =recall-history= personal skill remains a symlink
 to its independently maintained Recall checkout. That checkout must be present

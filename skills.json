@@ -26,11 +26,17 @@
     },
     {
       "name": "org-triage",
-      "local": "~/src/suderman/june/skills/org-triage"
+      "local": [
+        "~/src/suderman/june/skills/org-triage",
+        "~/.config/june/skills/org-triage"
+      ]
     },
     {
       "name": "project-org-tasks",
-      "local": "~/src/suderman/june/skills/project-org-tasks"
+      "local": [
+        "~/src/suderman/june/skills/project-org-tasks",
+        "~/.config/june/skills/project-org-tasks"
+      ]
     }
   ]
 }

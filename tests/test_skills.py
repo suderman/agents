@@ -126,9 +126,24 @@ class SkillsTests(unittest.TestCase):
         self.run_command("check", error="tasks: link does not point at")
         shutil.rmtree(self.home / "src")
         result = self.run_command("materialize")
-        self.assertIn("not on this host; skipped", result.stderr)
+        self.assertIn("none of its local paths is on this host; skipped", result.stderr)
         self.assertFalse((self.root / "skills/tasks").exists())
         self.run_command("check")
+
+    def test_local_skill_prefers_its_first_present_path(self):
+        checkout = self.home / "src/june/skills/tasks"
+        pinned = self.home / ".config/june/skills/tasks"
+        self.add_skill(pinned, "tasks")
+        self.select(self.entry, {"name": "tasks", "local": ["~/src/june/skills/tasks", "~/.config/june/skills/tasks"]})
+        self.run_command("update")
+        self.assertEqual(Path(os.readlink(self.root / "skills/tasks")), pinned, "the pinned copy when no checkout is here")
+        self.add_skill(checkout, "tasks")
+        self.run_command("check", error="tasks: link does not point at")
+        self.run_command("materialize")
+        self.assertEqual(Path(os.readlink(self.root / "skills/tasks")), checkout, "the checkout once it exists")
+        self.run_command("check")
+        self.select(self.entry, {"name": "tasks", "local": []})
+        self.run_command("check", error="a local skill needs only name and local")
 
     def test_locked_reproduction_and_repeat_runs(self):
         self.run_command("update")
