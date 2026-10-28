@@ -34,5 +34,24 @@
       "kit",
       "cog"
     ]
+  },
+  "reflection": {
+    "enabled": true,
+    "start": "03:00",
+    "end": "06:00",
+    "quietMinutes": 60
+  },
+  "patter": {
+    "openAfterSeconds": 8,
+    "gapsSeconds": [
+      25,
+      25,
+      25,
+      40,
+      60,
+      90,
+      120,
+      180
+    ]
   }
 }
