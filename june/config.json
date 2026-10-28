@@ -39,7 +39,8 @@
     "enabled": true,
     "start": "03:00",
     "end": "06:00",
-    "quietMinutes": 60
+    "quietMinutes": 60,
+    "recentDays": 3
   },
   "patter": {
     "openAfterSeconds": 8,
