@@ -1,14 +1,14 @@
 {
-  "defaultProvider": "codex-lb",
+  "defaultProvider": "cliproxyapi",
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "high",
   "enabledModels": [
-    "codex-lb/gpt-6.1-sol:high",
-    "codex-lb/gpt-6-sol:high",
-    "codex-lb/gpt-6-luna:high",
-    "codex-lb/gpt-5.6-sol:high",
-    "codex-lb/gpt-5.6-terra:medium",
-    "codex-lb/gpt-6-astra:high"
+    "cliproxyapi/gpt-6.1-sol:high",
+    "cliproxyapi/gpt-6-sol:high",
+    "cliproxyapi/gpt-6-luna:high",
+    "cliproxyapi/gpt-5.6-sol:high",
+    "cliproxyapi/gpt-5.6-terra:medium",
+    "cliproxyapi/gpt-6-astra:high"
   ],
   "transport": "sse",
   "defaultTools": ["+codemode"],
