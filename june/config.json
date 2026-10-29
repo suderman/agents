@@ -36,7 +36,9 @@
     "hosts": [
       "kit",
       "cog"
-    ]
+    ],
+    "host": "kit",
+    "agent": "pi"
   },
   "rhythm": {
     "wake": "05:00",
