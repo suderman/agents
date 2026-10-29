@@ -38,7 +38,8 @@
       "cog"
     ],
     "host": "kit",
-    "agent": "pi"
+    "agent": "pi",
+    "settle": 90
   },
   "rhythm": {
     "wake": "05:00",
