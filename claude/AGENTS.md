@@ -31,10 +31,12 @@ When writing Org, the file records structure and the editor wraps lines:
   tags to a column.
 
 Use `~/profile/skills` for personal authored skills and `~/profile/prompts` for
-personal commands. Ask before editing them. `~/.agents/skills` is generated
-community content. Change its selections through `~/.agents/agents skill`,
-not by editing downloaded files. Native Claude skills and state remain owned
-by Claude Code.
+personal commands. That collection has no Git history. Ask before editing them.
+`~/.agents/skills` combines generated community content with repository skills
+linked from the checkouts that own them, such as June's `skills/`. Resolve a
+skill's link and edit a repository skill in its owning repository. Change
+community selections through `~/.agents/agents skill`, not by editing
+downloaded files. Native Claude skills and state remain owned by Claude Code.
 
 Keep secrets out of repositories and logs. Do not edit `/etc/nixos` unless
 Jon explicitly requests system changes. Package installation, persistence,
