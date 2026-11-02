@@ -49,7 +49,8 @@
   "reflection": {
     "enabled": true,
     "quietMinutes": 60,
-    "recentDays": 3
+    "recentDays": 3,
+    "bitcoin": true
   },
   "heartbeat": {
     "enabled": true,
