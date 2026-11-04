@@ -17,7 +17,7 @@
     },
     "expression": {
       "modelId": "gpt-6.1-terra",
-      "thinkingLevel": "medium"
+      "thinkingLevel": "low"
     }
   },
   "providersFile": "~/.pi/agent/models.json",
