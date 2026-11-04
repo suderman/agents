@@ -14,6 +14,10 @@
     },
     "patter": {
       "modelId": "gpt-6-luna"
+    },
+    "expression": {
+      "modelId": "gpt-6.1-terra",
+      "thinkingLevel": "medium"
     }
   },
   "providersFile": "~/.pi/agent/models.json",
