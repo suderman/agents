@@ -47,7 +47,8 @@
       "pi",
       "claude"
     ],
-    "settle": 90
+    "settle": 90,
+    "improve": { "file": "work/suderman/june/june.org" }
   },
   "rhythm": {
     "wake": "05:00",
