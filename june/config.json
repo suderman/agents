@@ -17,7 +17,7 @@
     },
     "expression": {
       "modelId": "gpt-6.1-terra",
-      "thinkingLevel": "low"
+      "thinkingLevel": "medium"
     }
   },
   "providersFile": "~/.pi/agent/models.json",
@@ -62,7 +62,7 @@
   },
   "heartbeat": {
     "enabled": true,
-    "everyMinutes": 60,
+    "everyMinutes": 30,
     "chattingMinutes": 15
   },
   "looseEnds": { "enabled": true, "at": "20:30" },
