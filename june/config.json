@@ -43,6 +43,10 @@
     ],
     "host": "kit",
     "agent": "pi",
+    "agents": [
+      "pi",
+      "claude"
+    ],
     "settle": 90
   },
   "rhythm": {
