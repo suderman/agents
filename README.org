@@ -267,13 +267,7 @@ atomically with mode =0600=. Repeat applies leave unchanged state alone.
 =agents doctor= checks trust without changing it. No live state is copied into
 this repository. See Claude's [[https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust][workspace trust rules]].
 
-=claude/AGENTS.md= holds the existing global instructions. The deployed
-=~/.claude/CLAUDE.md= contains only =@AGENTS.md= because Claude's global user
-instruction loader requires that filename. It imports the adjacent writable
-=AGENTS.md= copy, without repeating its prose. Project =AGENTS.md= files load
-through Claude's built-in plugin, alongside any existing =CLAUDE.md=. The plugin
-skips instructions already imported or linked by path or content. The adapter
-does not create project =CLAUDE.md= files or install third-party plugins.
+=claude/AGENTS.md= is the canonical global instruction source. The adapter writes its full content into both =CLAUDE.md= and =AGENTS.md= in each configured Claude profile. It does not use an =@AGENTS.md= import: with separate account config directories, the default =~/.claude/CLAUDE.md= can also load as an ancestor project instruction and require external-import approval in every working directory. Instruction updates deploy to both filenames, with private backups of changed files. Project =AGENTS.md= files load through Claude's built-in plugin, alongside any existing =CLAUDE.md=. The plugin skips instructions already imported or linked by path or content. The adapter does not create project =CLAUDE.md= files or disable external-import approval for project instructions.
 
 Claude records only its own skill links, prompt copies, and MCP servers in
 =~/.claude/.agents-managed.json=. It removes deselected entries only when they

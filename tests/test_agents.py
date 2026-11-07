@@ -133,7 +133,8 @@ class AgentsTests(unittest.TestCase):
         backups = list((self.home / ".claude/backups").glob("agents-settings.json.*"))
         self.assertEqual([p.read_bytes() for p in backups], [old_settings])
         self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
-        self.assertEqual((self.home / ".claude/CLAUDE.md").read_text(), "@AGENTS.md\n")
+        self.assertEqual((self.home / ".claude/CLAUDE.md").read_bytes(),
+                         (self.root / "claude/AGENTS.md").read_bytes())
         self.assertTrue((self.home / ".claude/skills/personal").is_symlink())
         self.assertEqual(os.readlink(self.home / ".claude/skills/alpha"), str(self.root / "skills/alpha"))
         prompt = (self.home / ".claude/commands/review.md").read_text()
@@ -314,6 +315,14 @@ class AgentsTests(unittest.TestCase):
 
     def test_claude_restores_writable_settings_and_instructions(self):
         self.command("apply")
+        source = self.root / "claude/AGENTS.md"
+        source.write_text(source.read_text() + "\nUpdated global instruction.\n")
+        self.command("apply")
+        for name in ["CLAUDE.md", "AGENTS.md"]:
+            self.assertEqual((self.home / ".claude" / name).read_bytes(), source.read_bytes())
+        backups = list((self.home / ".claude/backups").glob("agents-CLAUDE.md.*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].stat().st_mode & 0o777, 0o600)
         target = self.home / ".claude/CLAUDE.md"
         settings = self.home / ".claude/settings.json"
         target.chmod(0o444)
