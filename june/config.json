@@ -47,6 +47,7 @@
       "pi",
       "claude"
     ],
+    "commands": { "claude": "claude-auto" },
     "settle": 90,
     "improve": { "file": "work/suderman/june/june.org" }
   },
