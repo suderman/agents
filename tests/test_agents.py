@@ -65,7 +65,7 @@ class AgentsTests(unittest.TestCase):
         self.write("skills.json", {"skills": [self.entry]})
         self.write("skills.lock", {"skills": [{**self.entry, "revision": self.revision}]})
         self.native = []
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude"]:
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work"]:
             runtime = self.home / relative
             self.skill(runtime / "skills/native", "native")
             for filename in [".env", "auth.json", "sessions/session.jsonl", "history.jsonl", "plugins/local/state", "cache/local"]:
@@ -230,7 +230,7 @@ class AgentsTests(unittest.TestCase):
                 target.unlink()
 
     def test_native_declared_names_cannot_shadow_shared_skills(self):
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude"]:
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work"]:
             with self.subTest(runtime=relative):
                 target = self.home / relative / "skills/other-folder"
                 self.skill(target, "alpha")
@@ -250,6 +250,77 @@ class AgentsTests(unittest.TestCase):
         self.write("june/config.json", {**config, "daemonHost": "kit"})
         self.command("apply", error="without daemonHost or telegram")
         self.assertEqual(before, snapshot(runtime))
+
+    def test_claude_profiles_receive_shared_resources_and_keep_separate_state(self):
+        (self.home / "src").mkdir()
+        self.write("claude/mcp.json", {"mcpServers": {
+            "shared": {"type": "http", "url": "https://example.invalid/mcp"},
+        }})
+        profiles = [self.home / name for name in [".claude", ".claude-home", ".claude-work"]]
+        for profile in profiles:
+            (profile / "settings.json").write_text(json.dumps({"model": profile.name, "env": {"PROFILE": profile.name}}))
+            state = self.home / ".claude.json" if profile.name == ".claude" else profile / ".claude.json"
+            state.write_text(json.dumps({"oauth": profile.name, "mcpServers": {
+                "native": {"type": "http", "url": f"https://example.invalid/{profile.name}"},
+            }}))
+        result = self.command("apply")
+        for profile in profiles:
+            self.assertIn(f"claude: applied to {profile}", result.stdout)
+            settings = json.loads((profile / "settings.json").read_text())
+            self.assertEqual(settings["model"], profile.name)
+            self.assertEqual(settings["env"]["PROFILE"], profile.name)
+            self.assertEqual(settings["permissions"]["defaultMode"], "auto")
+            for name in ["CLAUDE.md", "AGENTS.md"]:
+                self.assertEqual((profile / name).read_bytes(), (self.root / "claude/AGENTS.md").read_bytes())
+            self.assertEqual(os.readlink(profile / "skills/alpha"), str(self.root / "skills/alpha"))
+            self.assertTrue((profile / "skills/personal").is_symlink())
+            self.assertIn("$ARGUMENTS", (profile / "commands/review.md").read_text())
+            state = self.home / ".claude.json" if profile.name == ".claude" else profile / ".claude.json"
+            actual = json.loads(state.read_text())
+            self.assertEqual(actual["oauth"], profile.name)
+            self.assertEqual(actual["mcpServers"]["native"]["url"], f"https://example.invalid/{profile.name}")
+            self.assertIn("shared", actual["mcpServers"])
+            self.assertTrue(actual["projects"][str(self.home / "src")]["hasTrustDialogAccepted"])
+            self.assertIn("shared", json.loads((profile / ".agents-managed.json").read_text())["mcpServers"])
+        before = snapshot(self.home)
+        self.command("apply")
+        result = self.command("doctor")
+        for profile in profiles:
+            self.assertIn(f"OK claude ({profile}) deployment", result.stdout)
+        self.assertEqual(before, snapshot(self.home))
+        (profiles[-1] / "AGENTS.md").write_text("drift")
+        before = snapshot(self.home)
+        result = self.command("doctor", error="instructions differ")
+        self.assertIn(f"FAIL claude ({profiles[-1]}) deployment", result.stdout)
+        self.assertEqual(before, snapshot(self.home))
+
+    def test_claude_config_override_applies_only_one_profile(self):
+        before = snapshot(self.home)
+        custom = self.home / "custom-claude"
+        env = {**self.env, "AGENTS_HARNESSES": "claude", "CLAUDE_CONFIG_DIR": str(custom)}
+        result = self.command("apply", env=env)
+        self.assertEqual(result.stdout.count("claude: applied to"), 1)
+        self.assertTrue((custom / "settings.json").is_file())
+        after = snapshot(self.home)
+        for name, value in before.items():
+            if not name.startswith(".agents/"):
+                self.assertEqual(after[name], value, name)
+        for name in [".claude", ".claude-home", ".claude-work"]:
+            self.assertFalse((self.home / name / ".agents-managed.json").exists())
+        before = snapshot(self.home)
+        self.command("doctor", env=env)
+        self.assertEqual(before, snapshot(self.home))
+
+    def test_claude_profile_preflight_fails_before_any_writes(self):
+        profile = self.home / ".claude-work"
+        for path, content, error in [(profile / "settings.json", "[]", "must be a JSON object"),
+                                     (profile / ".claude.json", '{"projects":[]}', "Claude workspace trust")]:
+            with self.subTest(path=path):
+                path.write_text(content)
+                before = snapshot(self.home)
+                self.command("apply", error=error)
+                self.assertEqual(before, snapshot(self.home))
+                path.unlink()
 
     def test_claude_pretrusts_home_roots_and_repositories(self):
         src = self.home / "src"

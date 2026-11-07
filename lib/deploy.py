@@ -15,8 +15,8 @@ mcp = runpy.run_path(str(ROOT / "lib/mcp.py"))
 HARNESSES = ("pi", "opencode", "hermes", "claude", "june")
 
 
-def run(*args, capture=False):
-    result = subprocess.run(args, text=True, capture_output=capture, check=False)
+def run(*args, capture=False, env=None):
+    result = subprocess.run(args, text=True, capture_output=capture, check=False, env=env)
     if result.returncode:
         raise ValueError(f"failed: {' '.join(args)}" + (f": {result.stderr.strip()}" if capture and result.stderr.strip() else ""))
     return result.stdout.strip() if capture else ""
@@ -40,6 +40,22 @@ def destinations():
         "claude": Path(env.get("CLAUDE_CONFIG_DIR") or home / ".claude"),
         "june": Path(env.get("JUNE_CONFIG_DIR") or Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "june"),
     }
+
+
+def deployments(names):
+    configured = destinations()
+    for name in names:
+        yield name, configured[name]
+        if name == "claude" and not os.environ.get("CLAUDE_CONFIG_DIR"):
+            for relative in [".claude-home", ".claude-work"]:
+                yield name, Path.home() / relative
+
+
+def bootstrap(name, destination, *args, capture=False):
+    env = os.environ.copy()
+    if name == "claude" and destination != destinations()["claude"]:
+        env["CLAUDE_CONFIG_DIR"] = str(destination)
+    return run(str(ROOT / name / "bootstrap"), *args, capture=capture, env=env)
 
 
 def validate_prompts():
@@ -70,8 +86,8 @@ def preflight(names):
     entries = skills["locked_entries"](manifest)
     skills["collisions"](entries)
     validate_prompts()
-    for name in names:
-        run(str(ROOT / name / "bootstrap"), "--check")
+    for name, destination in deployments(names):
+        bootstrap(name, destination, "--check")
     native_collisions(names, entries)
     return entries
 
@@ -88,7 +104,7 @@ def verify(name, destination):
     """Check declared files and merged settings, not auth or network services."""
     source = ROOT / name
     if name == "claude":
-        run(str(source / "bootstrap"), "--verify")
+        bootstrap(name, destination, "--verify")
         return
     if name == "june":
         # Copied whole: June reads these and never writes them.
@@ -134,10 +150,10 @@ def apply():
         # Fetch and validate the entire staged tree before replacing existing state.
         skills["realize"](entries, update=False)
     skills["check_tree"](entries)
-    for name in names:
-        run(str(ROOT / name / "bootstrap"))
-        verify(name, destinations()[name])
-        print(f"{name}: applied", flush=True)
+    for name, destination in deployments(names):
+        bootstrap(name, destination)
+        verify(name, destination)
+        print(f"{name}: applied to {destination}", flush=True)
 
 
 def sync():
@@ -191,11 +207,11 @@ def doctor():
     report("enabled harnesses", lambda: ", ".join(enabled()))
     for command in ["git", "bash", "python3", "jq", "yq", "cp", "cmp", "mktemp"]:
         report(f"dependency {command}", lambda command=command: shutil.which(command) or missing(command))
-    for name in enabled():
-        destination = destinations()[name]
+    for name, destination in deployments(enabled()):
         print(f"{name} destination: {destination}")
-        report(f"{name} preflight", lambda name=name: run(str(ROOT / name / "bootstrap"), "--check", capture=True))
-        report(f"{name} deployment", lambda name=name, destination=destination: verify(name, destination))
+        label = f"{name} ({destination})" if name == "claude" else name
+        report(f"{label} preflight", lambda name=name, destination=destination: bootstrap(name, destination, "--check", capture=True))
+        report(f"{label} deployment", lambda name=name, destination=destination: verify(name, destination))
         binary = "hermes" if name == "hermes" else name
         print(f"{name} binary: {shutil.which(binary) or 'not installed; config deployment does not require it'}")
     return bool(failures)

@@ -50,7 +50,7 @@ on any machine using that link.
 | Pi | =~/.pi/agent= | =settings.json skills= paths |
 | OpenCode | =~/.config/opencode= | =opencode.json skills.paths= |
 | Hermes | =~/.hermes= | =config.yaml skills.external_dirs= |
-| Claude Code | =~/.claude= | Managed individual links under =skills/= |
+| Claude Code | =~/.claude=, =~/.claude-home=, =~/.claude-work= | Managed individual links under =skills/= |
 | June | =~/.config/june= | =june/config.json skillDirs= paths |
 
 Pi, OpenCode, Hermes, and June refer to =~/.agents/skills= and =~/profile/skills=
@@ -192,6 +192,8 @@ does not run the shared resolver, fetch skills, or certify global lock agreement
 Use =agents apply= for complete deployment. =bootstrap --check= is a read-only
 adapter preflight. Claude also supports =bootstrap --verify=.
 
+=agents apply= deploys Claude resources to =~/.claude=, =~/.claude-home= and =~/.claude-work= by default. It checks all three profiles before writing; =agents doctor= checks and reports each profile separately. Each profile keeps its own settings merge, managed-entry record, backups, authentication and session data. Setting =CLAUDE_CONFIG_DIR= selects only that directory instead of the three defaults. Direct =claude/bootstrap= calls still target only =~/.claude= or the explicit override.
+
 Override destinations with =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=,
 =OPENCODE_DIR=, =HERMES_HOME=, or =CLAUDE_CONFIG_DIR=. OpenCode also honors
 =XDG_CONFIG_HOME=. Tests set a temporary =HOME= with isolated profile roots.
@@ -240,16 +242,7 @@ Hermes uses the named =custom:codex-lb= Responses provider, native Camofox brows
 and its native web/vision tools. Services, browser profiles, secrets, and the
 Herdr/Pi launch integration remain separate machine configuration.
 
-Claude merges =claude/settings.json= into the writable user settings at
-=~/.claude/settings.json=, or under =CLAUDE_CONFIG_DIR= when set. Declared
-preferences win; unrelated keys, hooks, environment variables, plugin options,
-and model selections survive. Per-model effort entries are defaults only:
-existing effort levels and compaction preferences take precedence. Repeat
-applies leave unchanged files in place. Before changing existing settings or
-instruction content, the adapter saves a private =0600= copy in the destination's
-=backups/agents-<filename>.*=. Settings keep their existing mode with owner
-read/write access ensured, or use =0600= when first created. No credentials,
-caches, or session state enter this checkout.
+Claude merges =claude/settings.json= into each profile's writable =settings.json=. Declared preferences win; unrelated keys, hooks, environment variables, plugin options, and model selections survive. Per-model effort entries are defaults only: existing effort levels and compaction preferences take precedence. Repeat applies leave unchanged files in place. Before changing existing settings or instruction content, the adapter saves a private =0600= copy in the destination's =backups/agents-<filename>.*=. Settings keep their existing mode with owner read/write access ensured, or use =0600= when first created. No credentials, caches, or session state enter this checkout.
 
 The Claude adapter also pre-trusts existing =~/src= and =~/org= directories and
 Git repositories beneath them. Paths come from the current user's home directory,
@@ -258,14 +251,7 @@ up on the next apply. Directory symlinks are not traversed. Worktrees use their
 main checkout's trust entry, as Claude requires. This grants workspace trust to
 projects in those trees, including their project hooks and other startup code.
 
-Trust is separate from the permission mode. The adapter merges only
-=projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json=, or
-=$CLAUDE_CONFIG_DIR/.claude.json= when set. Existing auth, unmanaged MCP servers,
-project history, and other state survive. Before a change, it saves a private
-backup under the Claude destination's =backups/= directory and writes the state
-atomically with mode =0600=. Repeat applies leave unchanged state alone.
-=agents doctor= checks trust without changing it. No live state is copied into
-this repository. See Claude's [[https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust][workspace trust rules]].
+Trust is separate from the permission mode. The adapter merges =projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json= for the default profile, and into =~/.claude-home/.claude.json= and =~/.claude-work/.claude.json= for the additional profiles. With an explicit override, it uses =$CLAUDE_CONFIG_DIR/.claude.json=. These files also hold each profile's user-level MCP servers. Existing auth, unmanaged MCP servers, project history, and other state survive. Before a change, it saves a private backup under the Claude destination's =backups/= directory and writes the state atomically with mode =0600=. Repeat applies leave unchanged state alone. =agents doctor= checks trust without changing it. No live state is copied into this repository. See Claude's [[https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust][workspace trust rules]].
 
 =claude/AGENTS.md= is the canonical global instruction source. The adapter writes its full content into both =CLAUDE.md= and =AGENTS.md= in each configured Claude profile. It does not use an =@AGENTS.md= import: with separate account config directories, the default =~/.claude/CLAUDE.md= can also load as an ancestor project instruction and require external-import approval in every working directory. Instruction updates deploy to both filenames, with private backups of changed files. Project =AGENTS.md= files load through Claude's built-in plugin, alongside any existing =CLAUDE.md=. The plugin skips instructions already imported or linked by path or content. The adapter does not create project =CLAUDE.md= files or disable external-import approval for project instructions.
 
