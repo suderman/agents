@@ -32,6 +32,13 @@
       ]
     },
     {
+      "name": "org-conflicts",
+      "local": [
+        "~/src/suderman/june/skills/org-conflicts",
+        "~/.config/june/skills/org-conflicts"
+      ]
+    },
+    {
       "name": "project-org-tasks",
       "local": [
         "~/src/suderman/june/skills/project-org-tasks",
