@@ -69,6 +69,7 @@
   },
   "looseEnds": { "enabled": true, "at": "20:30" },
   "conflicts": { "enabled": true, "at": "00:30" },
+  "ntfy": { "url": "https://ntfy.hub/june" },
   "mail": { "enabled": true, "query": "tag:inbox and tag:unread", "accounts": { "suderman": "home", "nonfiction": "work" } },
   "watch": { "enabled": true, "gapMinutes": 10 },
   "patter": {
