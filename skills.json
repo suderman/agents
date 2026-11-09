@@ -46,6 +46,13 @@
       ]
     },
     {
+      "name": "development-review",
+      "local": [
+        "~/src/suderman/june/skills/development-review",
+        "~/.config/june/skills/development-review"
+      ]
+    },
+    {
       "name": "june-art",
       "local": "~/src/suderman/june/.agents/skills/june-art"
     }
