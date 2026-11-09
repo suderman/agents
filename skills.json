@@ -44,6 +44,10 @@
         "~/src/suderman/june/skills/project-org-tasks",
         "~/.config/june/skills/project-org-tasks"
       ]
+    },
+    {
+      "name": "june-art",
+      "local": "~/src/suderman/june/.agents/skills/june-art"
     }
   ]
 }
