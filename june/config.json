@@ -49,6 +49,7 @@
     ],
     "commands": { "claude": "claude-auto" },
     "settle": 90,
+    "retire": true,
     "improve": { "file": "work/suderman/june/june.org" }
   },
   "rhythm": {
