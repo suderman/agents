@@ -55,6 +55,10 @@
     {
       "name": "june-art",
       "local": "~/src/suderman/june/.agents/skills/june-art"
+    },
+    {
+      "name": "household-finance",
+      "local": "~/src/suderman/finance/skills/household-finance"
     }
   ]
 }
