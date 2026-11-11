@@ -59,6 +59,10 @@
     {
       "name": "household-finance",
       "local": "~/src/suderman/finance/skills/household-finance"
+    },
+    {
+      "name": "statement-downloads",
+      "local": "~/src/suderman/finance/skills/statement-downloads"
     }
   ]
 }
