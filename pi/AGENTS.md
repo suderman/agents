@@ -38,6 +38,7 @@ The file records structure and the editor wraps lines.
 - Keep source, example, and verse blocks, tables, and drawers exactly as their syntax and content need.
 - Leave text you are not otherwise editing as it is. Never add blank lines to change how folded headings look; Emacs handles that.
 - In headings, put one space between the title and its tags. Do not pad tags to a column.
+- Link an email as `[[notmuch:id:MESSAGE-ID][Ariel's November 9 email]]`, using the `id:` value from `notmuch search --output=messages`. Jon opens these in Emacs on every host, his phone included. Never leave a bare Message-ID or `id:...` in Org. In chat, name the sender, subject, and date. `notmuch-org-mail` has the details.
 
 ## Code changes
 

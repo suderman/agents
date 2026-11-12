@@ -111,6 +111,11 @@ existing Org project under `~/org/work/`.
 - Do not treat repository-local `work/`, TODO, or planning files as substitutes
   for the Org project system unless the repository explicitly defines them as
   part of its own workflow.
+- Link an email in Org as `[[notmuch:id:MESSAGE-ID][Ariel's November 9 email]]`,
+  using the `id:` value from `notmuch search --output=messages`. Jon opens
+  these in Emacs on every host, his phone included. Never leave a bare
+  Message-ID or `id:...` in Org. In chat, name the sender, subject, and date.
+  `notmuch-org-mail` has the details.
 
 ---
 
