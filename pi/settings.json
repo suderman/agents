@@ -3,6 +3,8 @@
   "defaultModel": "gpt-6.1-sol",
   "defaultThinkingLevel": "high",
   "enabledModels": [
+    "cliproxyapi/gpt-6.2-sol:high",
+    "cliproxyapi/gpt-6.2-astra:high",
     "cliproxyapi/gpt-6.1-sol:high",
     "cliproxyapi/gpt-6-sol:high",
     "cliproxyapi/gpt-6-luna:high",
