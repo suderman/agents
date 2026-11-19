@@ -11,13 +11,13 @@
   "default_agent": "luna",
   "agent": {
     "build": {
-      "model": "openai/gpt-6.1-sol",
+      "model": "cliproxyapi/gpt-6.2-sol",
       "permission": {
         "task": "deny"
       }
     },
     "plan": {
-      "model": "openai/gpt-6.1-sol",
+      "model": "cliproxyapi/gpt-6.2-sol",
       "permission": {
         "task": "deny"
       }
