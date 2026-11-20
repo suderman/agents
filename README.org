@@ -272,7 +272,7 @@ built-in plugin options require.
 - Set =attribution= to empty =commit= and =pr= strings and =sessionUrl: false=
   to omit commit trailers, PR attribution, and session links. This is the form
   Claude stores; =attribution: false= is equivalent on 2.1.281 or later.
-- Use =tui: "fullscreen"= and =CLAUDE_CODE_DISABLE_TERMINAL_TITLE= set to =1=.
+- Use =tui: "fullscreen"=. Leave terminal titles on: =CLAUDE_CODE_DISABLE_TERMINAL_TITLE= also turns off Claude's OSC 7501 status, which herdr-core, the Herdr app, waybar and June's dispatcher read.
   Pi's existing fullscreen setting remains unchanged.
 - Disable auto memory, built-in Git instructions and the initial Git snapshot,
   spinner tips, prompt suggestions, and feedback drafts.
