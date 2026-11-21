@@ -4,6 +4,8 @@
   inputs.llm-agents.url = "github:numtide/llm-agents.nix";
 
   outputs = {llm-agents, ...}: {
+    homeManagerModules.agents = import ./modules/agents.nix;
+
     packages =
       builtins.mapAttrs (_: packages: let
         # Numtide's Bun binary omits codemode's worker; use its supported Node build.

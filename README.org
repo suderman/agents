@@ -313,16 +313,19 @@ nix build .#pi .#opencode .#hermes-agent .#claude-code .#antigravity-cli
 nix run .#antigravity-cli -- --version
 #+end_src
 
-Home Manager owns package installation, persistence, secrets, services, and
-machine integrations. Mutable =agents apply= and =agents sync= are interactive
-operations, not activation prerequisites. Activation must not fetch this
-checkout or validate mutable skill/profile content. Missing checkouts, absent
-personal roots, and stale locks must not block a NixOS rebuild.
+*** Home Manager launcher
+With =inputs.agents.url = "github:suderman/agents";= in your flake, import the launcher from a Home Manager module that has access to =inputs=:
 
-The system repository has not been changed by this refactor. Its old
-=harnesses/= paths and activation bootstrap calls require a separate migration.
-That handoff is recorded in the Agents Org project, outside this repository.
-Until it is applied, do not assume the existing activation uses this new layout.
+#+begin_src nix
+{
+  imports = [inputs.agents.homeManagerModules.agents];
+  programs.agents.enable = true;
+}
+#+end_src
+
+This installs the =agents= command and its dependencies. The launcher runs the writable =~/.agents/agents= from your checkout, so local edits take effect on the next run. Clone the repository to =~/.agents= if it is not there yet. The module works with stock Home Manager and leaves harness installation, persistence, checkout provisioning, secrets, and services to the consuming configuration.
+
+Run =agents apply= and =agents sync= explicitly. Activation does not clone the checkout, fetch skills, or validate mutable configuration.
 
 For default Claude Code paths, persist =~/.claude/= and =~/.claude.json=.
 The directory holds settings, skills, commands, plugins, Linux login credentials,
