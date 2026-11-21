@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 skills = runpy.run_path(str(ROOT / "lib/skills"))
 mcp = runpy.run_path(str(ROOT / "lib/mcp.py"))
-HARNESSES = ("pi", "opencode", "hermes", "claude", "june", "agy")
+HARNESSES = ("pi", "opencode", "hermes", "claude", "june", "agy", "codex")
 
 
 def run(*args, capture=False, env=None):
@@ -40,6 +40,7 @@ def destinations():
         "claude": Path(env.get("CLAUDE_CONFIG_DIR") or home / ".claude"),
         "june": Path(env.get("JUNE_CONFIG_DIR") or Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "june"),
         "agy": home / ".gemini/antigravity-cli",
+        "codex": Path(env.get("CODEX_HOME") or home / ".codex"),
     }
 
 
@@ -107,7 +108,7 @@ def contains(actual, expected):
 def verify(name, destination):
     """Check declared files and merged settings, not auth or network services."""
     source = ROOT / name
-    if name in ("claude", "agy"):
+    if name in ("claude", "agy", "codex"):
         bootstrap(name, destination, "--verify")
         return
     if name == "june":

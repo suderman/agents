@@ -106,7 +106,8 @@ def workspace_trust():
     state = json.loads(config.read_text()) if config.exists() else {}
     if not isinstance(state, dict) or not isinstance(state.get("projects", {}), dict):
         raise TypeError(f"Claude workspace trust state must contain a projects object: {config}")
-    paths = set()
+    # Trust the temp directory as a parent, without scanning other users' repos.
+    paths = {str(Path("/tmp").resolve())} if Path("/tmp").is_dir() else set()
     for name in ["src", "org"]:
         root = (Path.home() / name).resolve()
         if not root.is_dir():

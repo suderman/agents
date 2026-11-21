@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import tomllib
+
 REPO = Path(__file__).resolve().parent.parent
 
 
@@ -35,11 +37,11 @@ class AgentsTests(unittest.TestCase):
         self.home = self.work / "home"
         self.root = self.home / ".agents"
         self.root.mkdir(parents=True)
-        for name in ["lib", "pi", "opencode", "hermes", "claude", "june", "agy"]:
+        for name in ["lib", "pi", "opencode", "hermes", "claude", "june", "agy", "codex"]:
             shutil.copytree(REPO / name, self.root / name)
         shutil.copy2(REPO / "agents", self.root / "agents")
         # Optional servers depend on the host PATH; tests declare their own.
-        for name in ["claude", "agy"]:
+        for name in ["claude", "agy", "codex"]:
             self.write(f"{name}/mcp.json", {"mcpServers": {}})
         (self.root / ".gitignore").write_text("/skills/\n/.scratch/\n")
         (self.home / "profile/prompts").mkdir(parents=True)
@@ -52,7 +54,7 @@ class AgentsTests(unittest.TestCase):
                     "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
                     "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
         for variable in ["PI_CODING_AGENT_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_DIR", "HERMES_HOME",
-                         "CLAUDE_CONFIG_DIR", "JUNE_CONFIG_DIR", "AGENTS_HARNESSES"]:
+                         "CLAUDE_CONFIG_DIR", "JUNE_CONFIG_DIR", "CODEX_HOME", "AGENTS_HARNESSES"]:
             self.env.pop(variable, None)
         self.upstream = self.work / "upstream"
         self.upstream.mkdir()
@@ -67,7 +69,7 @@ class AgentsTests(unittest.TestCase):
         self.write("skills.lock", {"skills": [{**self.entry, "revision": self.revision}]})
         self.native = []
         for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work",
-                         ".gemini/antigravity-cli"]:
+                         ".gemini/antigravity-cli", ".codex"]:
             runtime = self.home / relative
             self.skill(runtime / "skills/native", "native")
             for filename in [".env", "auth.json", "sessions/session.jsonl", "history.jsonl", "plugins/local/state", "cache/local"]:
@@ -115,6 +117,10 @@ class AgentsTests(unittest.TestCase):
         return [(p.read_bytes(), p.stat().st_ino, p.stat().st_mtime_ns, p.stat().st_mode) for p in self.native]
 
     def test_apply_preserves_native_state_and_repeats_without_fetch(self):
+        temp_root = str(Path("/tmp").resolve())  # noqa: S108
+        (self.home / ".claude.json").write_text(json.dumps({
+            "oauth": "preserve", "projects": {temp_root: {"hasTrustDialogAccepted": True}},
+        }))
         before = self.native_snapshot()
         old_settings = (self.home / ".claude/settings.json").read_bytes()
         lock = (self.root / "skills.lock").read_bytes()
@@ -259,7 +265,15 @@ class AgentsTests(unittest.TestCase):
         config = gemini / "config"
         config.mkdir()
         settings = gemini / "antigravity-cli/settings.json"
-        settings.write_text(json.dumps({"model": "native", "trustedWorkspaces": [str(self.work)]}))
+        native_settings = {
+            "model": "native",
+            "trustedWorkspaces": [str(self.work)],
+            "allowNonWorkspaceAccess": True,
+            "permissions": {"allow": ["command(git status)"], "ask": ["command(git push)"]},
+        }
+        settings.write_text(json.dumps({
+            **native_settings, "enableTerminalSandbox": True, "toolPermission": "proceed-in-sandbox",
+        }))
         instructions = config / "AGENTS.md"
         instructions.write_text("Native instructions\n")
         manifest = config / "skills.json"
@@ -273,7 +287,10 @@ class AgentsTests(unittest.TestCase):
         env = {**self.env, "AGENTS_HARNESSES": "agy"}
         self.assertIn("agy: applied", self.command("apply", env=env).stdout)
         self.assertEqual(json.loads(settings.read_text()), {
-            "model": "native", "trustedWorkspaces": [str(self.work)], "pickerGrouping": "grouped",
+            **native_settings,
+            "pickerGrouping": "grouped",
+            "enableTerminalSandbox": False,
+            "toolPermission": "always-proceed",
         })
         self.assertEqual(instructions.read_bytes(), (self.root / "agy/AGENTS.md").read_bytes())
         self.assertEqual([p.read_text() for p in config.glob("agents-AGENTS.md.*")], ["Native instructions\n"])
@@ -297,6 +314,45 @@ class AgentsTests(unittest.TestCase):
         self.write("agy/mcp.json", {"mcpServers": {"native": native}})
         before = snapshot(self.home)
         self.command("apply", error="agy native MCP server collision")
+        self.assertEqual(before, snapshot(self.home))
+
+    def test_codex_merges_toml_and_preserves_native_state(self):
+        runtime = self.home / ".codex"
+        config = runtime / "config.toml"
+        original = (
+            '# Keep this comment\nmodel = "native"\nnotify = ["notify", "arg"]\n\n'
+            '[projects."/work"]\ntrust_level = "trusted"\n\n'
+            '[[skills.config]]\npath = "/native/SKILL.md"\nenabled = false\n\n'
+            '[mcp_servers.native]\ncommand = "native-mcp"\n'
+        )
+        config.write_text(original)
+        self.write("codex/mcp.json", {"mcpServers": {
+            "native": {"command": "declared-mcp"},
+            "shared-tools": {"command": "shared-mcp"},
+            "missing": {"command": "agents-test-mcp-not-installed", "optional": True},
+        }})
+        env = {**self.env, "AGENTS_HARNESSES": "codex"}
+        before = self.native_snapshot()
+        self.command("apply", env=env)
+        self.assertEqual(before, self.native_snapshot())
+        result = tomllib.loads(config.read_text())
+        expected = tomllib.loads(original)
+        expected["model_reasoning_effort"] = "high"
+        expected["mcp_servers"]["shared-tools"] = {"command": "shared-mcp"}
+        self.assertEqual(result, expected)
+        self.assertIn('# Keep this comment', config.read_text())
+        self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+        self.assertEqual([p.read_text() for p in (runtime / "backups").glob("agents-config.toml.*")], [original])
+        self.assertEqual((runtime / "AGENTS.md").read_bytes(), (self.root / "codex/AGENTS.md").read_bytes())
+        self.assertEqual((runtime / "skills/agents-profile").readlink(), self.home / "profile/skills")
+        self.assertTrue((self.home / ".agents/skills/alpha/SKILL.md").is_file())
+        before = snapshot(self.home)
+        self.command("doctor", env=env)
+        self.command("apply", env=env)
+        self.assertEqual(before, snapshot(self.home))
+        config.write_text("broken = [\n")
+        before = snapshot(self.home)
+        self.command("apply", error="invalid or unsupported TOML", env=env)
         self.assertEqual(before, snapshot(self.home))
 
     def test_claude_profiles_receive_shared_resources_and_keep_separate_state(self):
@@ -401,7 +457,7 @@ class AgentsTests(unittest.TestCase):
         self.assertEqual(actual["projects"][str(repo)],
                          {**previous["projects"][str(repo)], "hasTrustDialogAccepted": True})
         self.assertEqual({p for p, value in actual["projects"].items() if value.get("hasTrustDialogAccepted")},
-                         {str(src), str(org), str(repo), str(nested)})
+                         {str(src), str(org), str(repo), str(nested), str(Path("/tmp").resolve())})  # noqa: S108
         self.assertEqual(state.stat().st_mode & 0o777, 0o600)
         backups = list((self.home / ".claude/backups").glob("agents-.claude.json.*"))
         self.assertEqual([json.loads(p.read_text()) for p in backups], [previous])

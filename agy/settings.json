@@ -1,3 +1,5 @@
 {
-  "pickerGrouping": "grouped"
+  "pickerGrouping": "grouped",
+  "enableTerminalSandbox": false,
+  "toolPermission": "always-proceed"
 }

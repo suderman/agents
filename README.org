@@ -18,6 +18,7 @@ in =~/profile=. Each harness keeps its own writable home and runtime state.
 ├── june/               June's config.json and AGENTS.md, copied to ~/.config/june
 ├── claude/             Claude preferences, instructions, and managed-entry adapter
 ├── agy/                Antigravity CLI preferences, instructions, MCP, and bootstrap
+├── codex/              Codex CLI preferences, instructions, MCP, and bootstrap
 ├── lib/                resolver and deployment helpers
 ├── tests/              isolated local fixtures
 ├── flake.nix           harness packages
@@ -54,6 +55,7 @@ on any machine using that link.
 | Claude Code | =~/.claude=, =~/.claude-home=, =~/.claude-work= | Managed individual links under =skills/= |
 | June | =~/.config/june= | =june/config.json skillDirs= paths |
 | Antigravity CLI | =~/.gemini/antigravity-cli= and =~/.gemini/config= | =~/.gemini/config/skills.json= entries |
+| Codex CLI | =~/.codex= | Native =~/.agents/skills= discovery and a personal skill link |
 
 Pi, OpenCode, Hermes, June, and Antigravity CLI refer to =~/.agents/skills= and =~/profile/skills= in place. Their native local skill directories remain active and untouched.
 Claude Code has no arbitrary skill-root setting. Its adapter installs individual
@@ -116,8 +118,7 @@ AGENTS_HARNESSES=pi,claude ~/.agents/agents apply
 
 =AGENTS_HARNESSES= accepts unique comma- or space-separated harness names. The
 same setting controls =doctor=. Invalid or empty selections fail. Bootstrap
-helpers need Bash, GNU coreutils, Python 3, Git, =jq= for Pi/OpenCode, and Mike
-Farah's =yq= v4 for Hermes. On NixOS, use =nix shell= when a tool is missing.
+helpers need Bash, GNU coreutils, Python 3.11 or newer, Git, =jq= for Pi/OpenCode, and Mike Farah's =yq= v4 with TOML support for Hermes and Codex. On NixOS, use =nix shell= when a tool is missing.
 
 *** Community skill selection
 
@@ -169,7 +170,7 @@ or harness-only metadata in shared templates.
 Pi copies templates into =prompts/= and OpenCode into =commands/=. Both make
 writable atomic copies and preserve unrelated commands. They do not delete
 retired personal copies automatically. Claude copies them into =commands/= and
-adds =disable-model-invocation: true= so templates remain user-invoked. Hermes and Antigravity CLI have no shared prompt adapter. Antigravity slash commands are skills; importing the templates as ordinary skills would let the model invoke them. Keep harness-only templates under =pi/prompts/=, =opencode/commands/=, or =claude/commands/=. Shared/specific filename collisions fail instead of relying on copy order.
+adds =disable-model-invocation: true= so templates remain user-invoked. Hermes, Antigravity CLI, and Codex have no shared prompt adapter. Antigravity slash commands are skills; importing the templates as ordinary skills would let the model invoke them. Keep harness-only templates under =pi/prompts/=, =opencode/commands/=, or =claude/commands/=. Shared/specific filename collisions fail instead of relying on copy order.
 
 Claude gives a skill priority over a same-name command file. For example,
 =/impeccable= uses its linked upstream skill even when the personal alias is
@@ -185,17 +186,18 @@ Use =/reload= in Pi or start a new harness session after resource changes.
 ~/.agents/claude/bootstrap
 ~/.agents/june/bootstrap
 ~/.agents/agy/bootstrap
+~/.agents/codex/bootstrap
 #+end_src
 
 Each bootstrap handles its own declared configuration and local preflight. It
 does not run the shared resolver, fetch skills, or certify global lock agreement.
 Use =agents apply= for complete deployment. =bootstrap --check= is a read-only
-adapter preflight. Claude and Antigravity also support =bootstrap --verify=.
+adapter preflight. Claude, Antigravity, and Codex also support =bootstrap --verify=.
 
 =agents apply= deploys Claude resources to =~/.claude=, =~/.claude-home= and =~/.claude-work= by default. It checks all three profiles before writing; =agents doctor= checks and reports each profile separately. Each profile keeps its own settings merge, managed-entry record, backups, authentication and session data. Setting =CLAUDE_CONFIG_DIR= selects only that directory instead of the three defaults. Direct =claude/bootstrap= calls still target only =~/.claude= or the explicit override.
 
 Override destinations with =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=,
-=OPENCODE_DIR=, =HERMES_HOME=, or =CLAUDE_CONFIG_DIR=. OpenCode also honors
+=OPENCODE_DIR=, =HERMES_HOME=, =CLAUDE_CONFIG_DIR=, or =CODEX_HOME=. OpenCode also honors
 =XDG_CONFIG_HOME=. Tests set a temporary =HOME= with isolated profile roots.
 Source-tree destinations, the home root, and managed directory symlinks are
 rejected before writes. Named file symlinks become writable copies without
@@ -210,7 +212,7 @@ code. Pi packages and package-provided skills remain Pi-managed.
 
 *** MCP servers
 
-=pi/mcp.json=, =claude/mcp.json=, and =agy/mcp.json= declare user-level MCP servers. =lib/mcp.py= prepares them for the current machine. A stdio server
+=pi/mcp.json=, =claude/mcp.json=, =agy/mcp.json=, and =codex/mcp.json= declare user-level MCP servers. =lib/mcp.py= prepares them for the current machine. A stdio server
 marked ="optional": true= deploys only when its =command= is on =PATH= at apply
 time, and the flag itself is removed. This keeps machine-specific servers off
 other hosts. =davinci-resolve= runs =davinci-resolve-mcp=, which NixOS provides
@@ -249,6 +251,8 @@ not a fixed username. Each =agents apply= scans again, so new clones are picked
 up on the next apply. Directory symlinks are not traversed. Worktrees use their
 main checkout's trust entry, as Claude requires. This grants workspace trust to
 projects in those trees, including their project hooks and other startup code.
+
+The adapter also trusts =/tmp= as a parent without scanning it for Git repositories. Ordinary temporary directories can inherit trust, but temporary Git repositories still need their own approval. =/tmp= is shared; start Claude only in temporary directories you created or inspected.
 
 Trust is separate from the permission mode. The adapter merges =projects["<path>"].hasTrustDialogAccepted: true= into =~/.claude.json= for the default profile, and into =~/.claude-home/.claude.json= and =~/.claude-work/.claude.json= for the additional profiles. With an explicit override, it uses =$CLAUDE_CONFIG_DIR/.claude.json=. These files also hold each profile's user-level MCP servers. Existing auth, unmanaged MCP servers, project history, and other state survive. Before a change, it saves a private backup under the Claude destination's =backups/= directory and writes the state atomically with mode =0600=. Repeat applies leave unchanged state alone. =agents doctor= checks trust without changing it. No live state is copied into this repository. See Claude's [[https://code.claude.com/docs/en/permissions#project-allow-rules-and-workspace-trust][workspace trust rules]].
 
@@ -299,18 +303,24 @@ package and persists writable =~/.claude/= and =~/.claude.json=. No new machine
 module or runtime-file declaration is needed for these preferences.
 
 *** Antigravity CLI
-=agy/bootstrap= merges =agy/settings.json= into =~/.gemini/antigravity-cli/settings.json=. It groups =/resume= by workspace and leaves model, permissions, workspace trust, auth, and session history alone. It copies =agy/AGENTS.md= to =~/.gemini/config/AGENTS.md=, saving any replaced content beside it as a private =agents-AGENTS.md.*= file. Other global or project rules stay untouched. The global instructions, skills manifest, and MCP config under =~/.gemini/config/= are also visible to the Antigravity App.
+=agy/bootstrap= merges =agy/settings.json= into =~/.gemini/antigravity-cli/settings.json=. It groups =/resume= by workspace. It sets =toolPermission= to =always-proceed= and disables the terminal sandbox by default. Commands can run with your normal user privileges without approval unless an explicit ask or deny rule applies. Use this setup only in trusted workspaces. The adapter leaves model, execution mode, custom permission rules, outside-workspace access, workspace trust, auth, and session history alone. It copies =agy/AGENTS.md= to =~/.gemini/config/AGENTS.md=, saving any replaced content beside it as a private =agents-AGENTS.md.*= file. Other global or project rules stay untouched. The global instructions, skills manifest, and MCP config under =~/.gemini/config/= are also visible to the Antigravity App.
 
 The adapter adds both shared skill roots to =skills.json= without replacing other entries. It merges Chrome DevTools and DaVinci Resolve into =mcp_config.json= when their commands are on =PATH=. It preserves other servers and =agy mcp enable/disable= choices. A private =.agents-mcp.json= record lets apply remove its own servers when their commands disappear and refuse to overwrite locally edited definitions or unowned name collisions.
 
 Run =AGENTS_HARNESSES=agy ~/.agents/agents apply=, then =agy= and complete Google's sign-in if needed. Use =/info= to inspect discovered customizations and =agy mcp list= to list servers. See Google's [[https://antigravity.google/docs/customization-discovery/][customization discovery]] and [[https://antigravity.google/docs/cli/using/][CLI settings]] docs.
 
+*** Codex CLI
+=codex/bootstrap= merges =codex/config.toml= into the writable =$CODEX_HOME/config.toml=. It sets high reasoning effort without choosing a model or changing approvals or sandboxing. It adds Chrome DevTools and DaVinci Resolve when their commands are available and their server names are unused. Existing server definitions stay Codex-owned. To remove a deployed server, remove it with =codex mcp remove= and remove its declaration or make the optional command unavailable before the next apply.
+
+Codex already searches =~/.agents/skills=. The adapter links =~/profile/skills= under =$CODEX_HOME/skills/agents-profile= without replacing native skills. It copies =codex/AGENTS.md= and saves replaced instructions or configuration under =$CODEX_HOME/backups/=. It leaves =AGENTS.override.md=, auth, and sessions alone. See [[https://developers.openai.com/codex/config-basic][configuration]] and [[https://developers.openai.com/codex/skills][skill discovery]]. Run =AGENTS_HARNESSES=codex agents apply=, then =nix run ~/.agents#codex -- login= if you need to sign in.
+
 ** Nix packages and machine integration
-The flake exports =pi=, =opencode=, =hermes-agent=, =claude-code=, and =antigravity-cli= from the existing [[https://github.com/numtide/llm-agents.nix][Numtide llm-agents input]]. Pi remains default and uses its Node build so codemode's worker is available. The wrapper pins its own package asset directory. The Antigravity package provides the =agy= executable.
+The flake exports =pi=, =opencode=, =hermes-agent=, =claude-code=, =antigravity-cli=, and =codex= from the existing [[https://github.com/numtide/llm-agents.nix][Numtide llm-agents input]]. Pi remains default and uses its Node build so codemode's worker is available. The wrapper pins its own package asset directory. The Antigravity package provides the =agy= executable.
 
 #+begin_src sh
-nix build .#pi .#opencode .#hermes-agent .#claude-code .#antigravity-cli
+nix build .#pi .#opencode .#hermes-agent .#claude-code .#antigravity-cli .#codex
 nix run .#antigravity-cli -- --version
+nix run .#codex -- --version
 #+end_src
 
 *** Home Manager launcher
@@ -357,4 +367,4 @@ reproduction, failed fetches, malformed inputs, collisions, state preservation,
 repeat runs, read-only doctor, and conservative sync. No test depends on personal
 content being present on the CI host. =pi/test-codemode= separately checks the
 packaged codemode worker. The daily lock-update workflow also builds and smoke
-tests all five packages before publishing a package-lock change.
+tests all six packages before publishing a package-lock change.

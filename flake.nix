@@ -36,7 +36,7 @@
             '';
         });
       in {
-        inherit (packages) hermes-agent opencode claude-code antigravity-cli;
+        inherit (packages) hermes-agent opencode claude-code antigravity-cli codex;
         inherit pi;
         default = pi;
       })
