@@ -35,11 +35,12 @@ class AgentsTests(unittest.TestCase):
         self.home = self.work / "home"
         self.root = self.home / ".agents"
         self.root.mkdir(parents=True)
-        for name in ["lib", "pi", "opencode", "hermes", "claude", "june"]:
+        for name in ["lib", "pi", "opencode", "hermes", "claude", "june", "agy"]:
             shutil.copytree(REPO / name, self.root / name)
         shutil.copy2(REPO / "agents", self.root / "agents")
         # Optional servers depend on the host PATH; tests declare their own.
-        self.write("claude/mcp.json", {"mcpServers": {}})
+        for name in ["claude", "agy"]:
+            self.write(f"{name}/mcp.json", {"mcpServers": {}})
         (self.root / ".gitignore").write_text("/skills/\n/.scratch/\n")
         (self.home / "profile/prompts").mkdir(parents=True)
         self.skill(self.home / "profile/skills/personal", "personal")
@@ -49,9 +50,9 @@ class AgentsTests(unittest.TestCase):
         self.env = {**os.environ, "HOME": str(self.home), "XDG_CONFIG_HOME": str(self.home / ".config"),
                     "XDG_STATE_HOME": str(self.home / ".local/state"), "GIT_CONFIG_GLOBAL": "/dev/null",
                     "GIT_CONFIG_NOSYSTEM": "1", "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
-                    "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
-                    "AGENTS_HARNESSES": "pi,opencode,hermes,claude,june"}
-        for variable in ["PI_CODING_AGENT_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_DIR", "HERMES_HOME", "CLAUDE_CONFIG_DIR", "JUNE_CONFIG_DIR"]:
+                    "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
+        for variable in ["PI_CODING_AGENT_DIR", "OPENCODE_CONFIG_DIR", "OPENCODE_DIR", "HERMES_HOME",
+                         "CLAUDE_CONFIG_DIR", "JUNE_CONFIG_DIR", "AGENTS_HARNESSES"]:
             self.env.pop(variable, None)
         self.upstream = self.work / "upstream"
         self.upstream.mkdir()
@@ -65,7 +66,8 @@ class AgentsTests(unittest.TestCase):
         self.write("skills.json", {"skills": [self.entry]})
         self.write("skills.lock", {"skills": [{**self.entry, "revision": self.revision}]})
         self.native = []
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work"]:
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work",
+                         ".gemini/antigravity-cli"]:
             runtime = self.home / relative
             self.skill(runtime / "skills/native", "native")
             for filename in [".env", "auth.json", "sessions/session.jsonl", "history.jsonl", "plugins/local/state", "cache/local"]:
@@ -230,7 +232,8 @@ class AgentsTests(unittest.TestCase):
                 target.unlink()
 
     def test_native_declared_names_cannot_shadow_shared_skills(self):
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work"]:
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work",
+                         ".gemini/antigravity-cli", ".gemini/config", ".gemini"]:
             with self.subTest(runtime=relative):
                 target = self.home / relative / "skills/other-folder"
                 self.skill(target, "alpha")
@@ -250,6 +253,51 @@ class AgentsTests(unittest.TestCase):
         self.write("june/config.json", {**config, "daemonHost": "kit"})
         self.command("apply", error="without daemonHost or telegram")
         self.assertEqual(before, snapshot(runtime))
+
+    def test_agy_merges_native_config_and_manages_only_its_mcp_servers(self):
+        gemini = self.home / ".gemini"
+        config = gemini / "config"
+        config.mkdir()
+        settings = gemini / "antigravity-cli/settings.json"
+        settings.write_text(json.dumps({"model": "native", "trustedWorkspaces": [str(self.work)]}))
+        instructions = config / "AGENTS.md"
+        instructions.write_text("Native instructions\n")
+        manifest = config / "skills.json"
+        native_skills = {"path": "extra-skills", "exclude": ["one"]}
+        manifest.write_text(json.dumps({"entries": [native_skills]}))
+        mcp_file = config / "mcp_config.json"
+        mcp_file.touch()  # agy creates an empty file on first launch.
+        server = self.work / "fixture-mcp"
+        server.touch(mode=0o755)
+        self.write("agy/mcp.json", {"mcpServers": {"shared": {"command": str(server), "optional": True}}})
+        env = {**self.env, "AGENTS_HARNESSES": "agy"}
+        self.assertIn("agy: applied", self.command("apply", env=env).stdout)
+        self.assertEqual(json.loads(settings.read_text()), {
+            "model": "native", "trustedWorkspaces": [str(self.work)], "pickerGrouping": "grouped",
+        })
+        self.assertEqual(instructions.read_bytes(), (self.root / "agy/AGENTS.md").read_bytes())
+        self.assertEqual([p.read_text() for p in config.glob("agents-AGENTS.md.*")], ["Native instructions\n"])
+        self.assertEqual(json.loads(manifest.read_text())["entries"], [
+            native_skills, {"path": str(self.root / "skills")}, {"path": str(self.home / "profile/skills")},
+        ])
+        native = {"serverUrl": "https://example.invalid/mcp"}
+        servers = json.loads(mcp_file.read_text())["mcpServers"]
+        self.assertEqual(servers, {"shared": {"command": str(server)}})
+        servers["shared"]["disabled"] = True
+        servers["native"] = native
+        mcp_file.write_text(json.dumps({"mcpServers": servers}))
+        before = snapshot(self.home)
+        self.command("doctor", env=env)
+        self.command("apply", env=env)
+        self.assertEqual(before, snapshot(self.home))
+        server.unlink()
+        self.command("doctor", env=env, error="agy deployment mismatch")
+        self.command("apply", env=env)
+        self.assertEqual(json.loads(mcp_file.read_text()), {"mcpServers": {"native": native}})
+        self.write("agy/mcp.json", {"mcpServers": {"native": native}})
+        before = snapshot(self.home)
+        self.command("apply", error="agy native MCP server collision")
+        self.assertEqual(before, snapshot(self.home))
 
     def test_claude_profiles_receive_shared_resources_and_keep_separate_state(self):
         (self.home / "src").mkdir()

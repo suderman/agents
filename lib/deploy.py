@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 skills = runpy.run_path(str(ROOT / "lib/skills"))
 mcp = runpy.run_path(str(ROOT / "lib/mcp.py"))
-HARNESSES = ("pi", "opencode", "hermes", "claude", "june")
+HARNESSES = ("pi", "opencode", "hermes", "claude", "june", "agy")
 
 
 def run(*args, capture=False, env=None):
@@ -25,7 +25,7 @@ def run(*args, capture=False, env=None):
 def enabled():
     names = os.environ.get("AGENTS_HARNESSES", ",".join(HARNESSES)).replace(",", " ").split()
     if not names or len(names) != len(set(names)) or set(names) - set(HARNESSES):
-        raise ValueError("AGENTS_HARNESSES must list unique names: pi opencode hermes claude june")
+        raise ValueError(f"AGENTS_HARNESSES must list unique names: {' '.join(HARNESSES)}")
     return names
 
 
@@ -39,6 +39,7 @@ def destinations():
         "hermes": Path(env.get("HERMES_HOME") or home / ".hermes"),
         "claude": Path(env.get("CLAUDE_CONFIG_DIR") or home / ".claude"),
         "june": Path(env.get("JUNE_CONFIG_DIR") or Path(env.get("XDG_CONFIG_HOME") or home / ".config") / "june"),
+        "agy": home / ".gemini/antigravity-cli",
     }
 
 
@@ -73,12 +74,15 @@ def native_collisions(names, entries):
     for name in names:
         if name in ("claude", "june"):
             continue  # Claude's adapter distinguishes managed links from native entries; June has no native skills.
-        root = destinations()[name] / "skills"
-        for path in set(root.rglob("SKILL.md")) | set(root.glob("*/SKILL.md")):
-            match = re.search(r"^name:\s*['\"]?([a-z0-9-]+)['\"]?\s*$", path.read_text(), re.MULTILINE)
-            declared = match[1] if match else path.parent.name
-            if declared in shared:
-                raise ValueError(f"{name}: native/shared skill name collision: {declared} at {path}")
+        roots = [destinations()[name] / "skills"]
+        if name == "agy":
+            roots.extend(Path.home() / relative for relative in (".gemini/skills", ".gemini/config/skills"))
+        for root in roots:
+            for path in set(root.rglob("SKILL.md")) | set(root.glob("*/SKILL.md")):
+                match = re.search(r"^name:\s*['\"]?([a-z0-9-]+)['\"]?\s*$", path.read_text(), re.MULTILINE)
+                declared = match[1] if match else path.parent.name
+                if declared in shared:
+                    raise ValueError(f"{name}: native/shared skill name collision: {declared} at {path}")
 
 
 def preflight(names):
@@ -103,7 +107,7 @@ def contains(actual, expected):
 def verify(name, destination):
     """Check declared files and merged settings, not auth or network services."""
     source = ROOT / name
-    if name == "claude":
+    if name in ("claude", "agy"):
         bootstrap(name, destination, "--verify")
         return
     if name == "june":

@@ -46,7 +46,8 @@ jobs:
           tests/test-prompts
           tests/test-update-flake-lock
           nix shell nixpkgs#yq-go --command hermes/test-bootstrap
-          nix build .#pi .#opencode .#hermes-agent .#claude-code --no-link
+          nix build --no-link .#pi .#opencode .#hermes-agent .#claude-code \
+            .#antigravity-cli
           env -i PATH="$PATH" HOME="$fixture/pi" \
             "$(nix eval --raw .#pi.outPath)/bin/pi" --version
           HOME="$fixture/pi" pi/test-codemode "$(nix eval --raw .#pi.outPath)"
@@ -57,6 +58,8 @@ jobs:
             "$(nix eval --raw .#hermes-agent.outPath)/bin/hermes" --help
           env -i PATH="$PATH" HOME="$fixture/claude" \
             "$(nix eval --raw .#claude-code.outPath)/bin/claude" --version
+          env -i PATH="$PATH" HOME="$fixture/agy" \
+            "$(nix eval --raw .#antigravity-cli.outPath)/bin/agy" --version
 
       - name: Commit and push if flake.lock changed
         run: |

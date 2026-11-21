@@ -1,0 +1,139 @@
+#!/usr/bin/env python3
+"""Deploy Antigravity CLI preferences and personal customizations."""
+
+import hashlib
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+from deploy import ROOT, destinations, mcp, skills
+
+SOURCE = ROOT / "agy"
+
+
+def read_object(path, *, allow_empty=False):
+    raw = path.read_text()
+    # agy can create a zero-byte MCP file on first launch.
+    if allow_empty and not raw.strip():
+        return {}
+    try:
+        data = json.loads(raw, object_pairs_hook=skills["unique_keys"])
+    except ValueError as error:
+        raise ValueError(f"invalid JSON in {path}: {error}") from error
+    if not isinstance(data, dict):
+        raise TypeError(f"expected a JSON object: {path}")
+    return data
+
+
+def server_digest(server):
+    # agy mcp enable/disable changes this flag without editing the server definition.
+    definition = {key: value for key, value in server.items() if key != "disabled"}
+    return hashlib.sha256(json.dumps(definition, sort_keys=True).encode()).hexdigest()
+
+
+def plan(runtime, config):
+    for directory in (runtime, config):
+        resolved = directory.resolve()
+        if (resolved in {Path("/"), Path.home().resolve()} or resolved.is_relative_to(ROOT)
+                or resolved.is_relative_to((Path.home() / "profile").resolve())):
+            raise ValueError(f"unsafe runtime destination: {directory}")
+        if directory.exists() and not directory.is_dir():
+            raise ValueError(f"runtime destination is not a directory: {directory}")
+
+    settings_file = runtime / "settings.json"
+    settings = read_object(settings_file) if settings_file.exists() else {}
+    settings.update(read_object(SOURCE / "settings.json"))
+
+    manifest_file = config / "skills.json"
+    manifest = read_object(manifest_file) if manifest_file.exists() else {}
+    entries = manifest.setdefault("entries", [])
+    if not isinstance(entries, list) or any(not isinstance(entry, dict) or not isinstance(entry.get("path"), str)
+                                           for entry in entries):
+        raise ValueError(f"expected an array of skill path entries: {manifest_file}")
+    for path in (ROOT / "skills", Path.home() / "profile/skills"):
+        existing = [entry for entry in entries if (config / entry["path"]).resolve() == path.resolve()]
+        if existing and (len(existing) != 1 or existing[0].keys() != {"path"}):
+            raise ValueError(f"agy shared skill root conflicts with an existing manifest entry: {path}")
+        if not existing:
+            entries.append({"path": str(path)})
+
+    mcp_file = config / "mcp_config.json"
+    current = read_object(mcp_file, allow_empty=True) if mcp_file.exists() else {}
+    servers = current.setdefault("mcpServers", {})
+    if not isinstance(servers, dict):
+        raise TypeError(f"expected an mcpServers object: {mcp_file}")
+    record = config / ".agents-mcp.json"
+    previous = read_object(record) if record.exists() else {}
+    declared = mcp["servers"](SOURCE / "mcp.json")["mcpServers"]
+    for name, digest in previous.items():
+        if name in servers and (not isinstance(servers[name], dict) or server_digest(servers[name]) != digest):
+            raise ValueError(f"agy managed MCP server changed locally: {name}")
+    for name in previous.keys() - declared.keys():
+        servers.pop(name, None)
+    for name, server in declared.items():
+        if name in servers and name not in previous:
+            raise ValueError(f"agy native MCP server collision: {name}")
+        if name in servers and "disabled" in servers[name]:
+            server = {**server, "disabled": servers[name]["disabled"]}
+        servers[name] = server
+    return {
+        settings_file: settings,
+        manifest_file: manifest,
+        mcp_file: current,
+        record: {name: server_digest(server) for name, server in declared.items()},
+    }
+
+
+def writable_copy(path):
+    return not path.is_symlink() and path.is_file() and path.stat().st_mode & 0o600 == 0o600
+
+
+def write_copy(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=path.name + ".tmp.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as output:
+            output.write(content)
+        os.replace(temporary, path)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+
+
+def main():
+    try:
+        args = sys.argv[1:]
+        if args not in ([], ["--check"], ["--verify"]):
+            raise ValueError("use bootstrap [--check|--verify]")
+        runtime = destinations()["agy"]
+        config = Path.home() / ".gemini/config"
+        changes = plan(runtime, config)
+        instructions = config / "AGENTS.md"
+        content = (SOURCE / "AGENTS.md").read_bytes()
+        old = instructions.read_bytes() if instructions.exists() else None
+        if args == ["--check"]:
+            return
+        for path, data in changes.items():
+            if writable_copy(path) and read_object(path, allow_empty=path.name == "mcp_config.json") == data:
+                continue
+            if args == ["--verify"]:
+                raise ValueError(f"agy deployment mismatch: {path}")
+            write_copy(path, (json.dumps(data, indent=2) + "\n").encode())
+        if not writable_copy(instructions) or old != content:
+            if args == ["--verify"]:
+                raise ValueError(f"agy deployment mismatch: {instructions}")
+            if old is not None and old != content:
+                fd, backup = tempfile.mkstemp(prefix="agents-AGENTS.md.", dir=config)
+                with os.fdopen(fd, "wb") as output:
+                    output.write(old)
+                print(f"agy preserved {instructions} at {backup}")
+            write_copy(instructions, content)
+    except (OSError, ValueError, TypeError) as error:
+        sys.exit(f"agy bootstrap: {error}")
+
+
+if __name__ == "__main__":
+    main()
