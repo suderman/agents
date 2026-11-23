@@ -22,10 +22,7 @@
   },
   "providersFile": "~/.pi/agent/models.json",
   "contextCap": 200000,
-  "skillDirs": [
-    "~/.agents/skills",
-    "~/profile/skills"
-  ],
+  "skillDirs": ["~/.agents/skills", "~/profile/skills"],
   "org": {
     "root": "~/org"
   },
@@ -37,17 +34,11 @@
     }
   },
   "dispatch": {
-    "hosts": [
-      "kit",
-      "cog"
-    ],
+    "hosts": ["kit", "cog"],
     "host": "kit",
     "agent": "pi",
-    "agents": [
-      "pi",
-      "claude"
-    ],
-    "commands": { "claude": "claude-auto" },
+    "agents": ["pi", "claude"],
+    "commands": { "claude": "claude" },
     "settle": 90,
     "retire": true,
     "improve": { "file": "work/suderman/june/june.org" }
@@ -72,20 +63,15 @@
   "looseEnds": { "enabled": true, "at": "20:30" },
   "conflicts": { "enabled": true, "at": "00:30" },
   "ntfy": { "url": "https://ntfy.hub/june" },
-  "mail": { "enabled": true, "query": "tag:inbox and tag:unread", "accounts": { "suderman": "home", "nonfiction": "work" } },
+  "mail": {
+    "enabled": true,
+    "query": "tag:inbox and tag:unread",
+    "accounts": { "suderman": "home", "nonfiction": "work" }
+  },
   "watch": { "enabled": true, "gapMinutes": 10 },
   "patter": {
     "openAfterSeconds": 8,
-    "gapsSeconds": [
-      25,
-      25,
-      25,
-      40,
-      60,
-      90,
-      120,
-      180
-    ]
+    "gapsSeconds": [25, 25, 25, 40, 60, 90, 120, 180]
   },
   "situation": {
     "calendars": [
@@ -97,9 +83,7 @@
       "~/org/calendar/fresha.org"
     ],
     "homeAssistant": {
-      "people": [
-        "person.jon_suderman"
-      ],
+      "people": ["person.jon_suderman"],
       "weather": "weather.calgary_forecast",
       "pollSeconds": 300
     }
