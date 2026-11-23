@@ -42,7 +42,7 @@ export function resolveAdviserModel(ctx: ExtensionContext, configured?: string):
 	const preferredProvider = ctx.model?.provider;
 	const luna =
 		available.find((model) => model.provider === preferredProvider && model.id === "gpt-5.6-luna") ??
-		available.find((model) => model.provider === "codex-lb" && model.id === "gpt-5.6-luna") ??
+		available.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.6-luna") ??
 		available.find((model) => model.id === "gpt-5.6-luna") ??
 		available.find((model) => model.id.endsWith("/gpt-5.6-luna"));
 	if (luna) return { model: luna, name: `${luna.provider}/${luna.id}` };
