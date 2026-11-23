@@ -4,7 +4,7 @@
   },
   "model": {
     "chat": {
-      "provider": "cliproxyapi",
+      "provider": "openai-codex",
       "modelId": "gpt-6.1-terra",
       "thinkingLevel": "medium"
     },
