@@ -2,6 +2,7 @@
   "permissions": {
     "defaultMode": "auto"
   },
+  "skipDangerousModePermissionPrompt": true,
   "attribution": {
     "commit": "",
     "pr": "",

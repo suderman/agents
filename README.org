@@ -272,6 +272,9 @@ built-in plugin options require.
 
 - Start in =auto= mode. Use =--permission-mode= or the normal session controls
   to change modes temporarily. No allowlist or permission wrapper is added.
+- Skip the one-time warning before bypass-permissions mode
+  (=skipDangerousModePermissionPrompt=), which NixOS's Claude launchers start in
+  by default; without it every new host or profile stops on that dialog.
 - Set =attribution= to empty =commit= and =pr= strings and =sessionUrl: false=
   to omit commit trailers, PR attribution, and session links. This is the form
   Claude stores; =attribution: false= is equivalent on 2.1.281 or later.
