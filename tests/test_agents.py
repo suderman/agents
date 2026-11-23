@@ -119,7 +119,8 @@ class AgentsTests(unittest.TestCase):
     def test_apply_preserves_native_state_and_repeats_without_fetch(self):
         temp_root = str(Path("/tmp").resolve())  # noqa: S108
         (self.home / ".claude.json").write_text(json.dumps({
-            "oauth": "preserve", "projects": {temp_root: {"hasTrustDialogAccepted": True}},
+            "oauth": "preserve", "projects": {temp_root: {"hasTrustDialogAccepted": True},
+                                              str(self.home.resolve()): {"hasTrustDialogAccepted": True}},
             **json.loads((self.root / "claude/state.json").read_text()),
         }))
         before = self.native_snapshot()
@@ -486,7 +487,8 @@ class AgentsTests(unittest.TestCase):
         self.assertEqual(actual["projects"][str(repo)],
                          {**previous["projects"][str(repo)], "hasTrustDialogAccepted": True})
         self.assertEqual({p for p, value in actual["projects"].items() if value.get("hasTrustDialogAccepted")},
-                         {str(src), str(org), str(repo), str(nested), str(Path("/tmp").resolve())})  # noqa: S108
+                         {str(src), str(org), str(repo), str(nested), str(Path("/tmp").resolve()),  # noqa: S108
+                          str(self.home.resolve())})
         self.assertEqual(state.stat().st_mode & 0o777, 0o600)
         backups = list((self.home / ".claude/backups").glob("agents-.claude.json.*"))
         self.assertEqual([json.loads(p.read_text()) for p in backups], [previous])

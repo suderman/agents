@@ -108,6 +108,8 @@ def workspace_trust():
         raise TypeError(f"Claude workspace trust state must contain a projects object: {config}")
     # Trust the temp directory as a parent, without scanning other users' repos.
     paths = {str(Path("/tmp").resolve())} if Path("/tmp").is_dir() else set()
+    # Trust home itself, which Claude otherwise asks about every session started there.
+    paths.add(str(Path.home().resolve()))
     for name in ["src", "org"]:
         root = (Path.home() / name).resolve()
         if not root.is_dir():
