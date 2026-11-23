@@ -209,22 +209,31 @@ def plan(destination):
 
 def main():
     destination = destinations()["claude"]
+    args = sys.argv[1:]
+    # A June account folder (claude1, claude2, ...) links settings, instructions, skills and commands to ~/.claude
+    # and keeps only its login and .claude.json, so only that file's trust and MCP servers are deployed there.
+    state_only = "--state-only" in args
+    if state_only:
+        args.remove("--state-only")
     try:
-        selected, commands, previous, state, settings = plan(destination)
+        # ~/.claude owns the shared skills, commands and managed-entry record an account folder links to.
+        selected, commands, previous, state, settings = plan(Path.home() / ".claude" if state_only else destination)
         trust_file, trust = workspace_trust()
         state["mcpServers"], retired = mcp_servers(trust, previous)
-        if sys.argv[1:] == ["--check"]:
+        if args == ["--check"]:
             return
         for name, source in selected.items():
             if not (Path(source) / "SKILL.md").is_file():
                 raise ValueError(f"Claude skill source missing: {name}; run agents apply")
-        if sys.argv[1:] == ["--verify"]:
+        if args == ["--verify"]:
             actual_trust = json.loads(trust_file.read_text()) if trust_file.exists() else {}
             if not contains(actual_trust, trust):
                 raise ValueError("Claude workspace trust differs; run agents apply")
             present = sorted(set(retired) & set(actual_trust.get("mcpServers", {})))
             if present:
                 raise ValueError(f"Claude retired MCP servers present: {', '.join(present)}; run agents apply")
+            if state_only:
+                return
             if json.loads((destination / ".agents-managed.json").read_text()) != state:
                 raise ValueError("Claude managed-entry record differs from deployment")
             config = destination / "settings.json"
@@ -244,13 +253,15 @@ def main():
                 if (destination / "commands" / name).read_bytes() != content:
                     raise ValueError(f"Claude prompt differs: {name}")
             return
-        if sys.argv[1:]:
-            raise ValueError("use bootstrap [--check|--verify]")
+        if args:
+            raise ValueError("use bootstrap [--state-only] [--check|--verify]")
         destination.mkdir(parents=True, exist_ok=True)
         actual_trust = json.loads(trust_file.read_text()) if trust_file.exists() else {}
         if actual_trust != trust:
             preserve(trust_file, destination / "backups")
             write_copy(trust_file, (json.dumps(trust, indent=2) + "\n").encode(), 0o600)
+        if state_only:
+            return
         config = destination / "settings.json"
         if (not config.exists() or json.loads(config.read_text()) != settings or config.is_symlink()
                 or config.stat().st_mode & 0o600 != 0o600):

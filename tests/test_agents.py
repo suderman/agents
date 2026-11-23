@@ -398,6 +398,31 @@ class AgentsTests(unittest.TestCase):
         self.assertIn(f"FAIL claude ({profiles[-1]}) deployment", result.stdout)
         self.assertEqual(before, snapshot(self.home))
 
+    def test_june_account_folders_receive_only_their_own_state(self):
+        (self.home / "src").mkdir()
+        self.write("claude/mcp.json", {"mcpServers": {
+            "shared": {"type": "http", "url": "https://example.invalid/mcp"},
+        }})
+        self.command("apply")
+        base = self.home / ".claude"
+        folder = self.home / ".local/state/june/accounts/claude1"
+        folder.mkdir(parents=True)
+        for entry in base.iterdir():
+            (folder / entry.name).symlink_to(entry)
+        (folder / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "a@example.invalid"}}))
+        result = self.command("apply")
+        self.assertIn(f"claude: applied to {folder}", result.stdout)
+        state = json.loads((folder / ".claude.json").read_text())
+        self.assertEqual(state["oauthAccount"]["emailAddress"], "a@example.invalid")
+        self.assertIn("shared", state["mcpServers"])
+        self.assertTrue(state["projects"][str(self.home / "src")]["hasTrustDialogAccepted"])
+        for name in ["settings.json", "CLAUDE.md", "skills", ".agents-managed.json"]:
+            self.assertTrue((folder / name).is_symlink(), name)
+        before = snapshot(self.home)
+        result = self.command("doctor")
+        self.assertIn(f"OK claude ({folder}) deployment", result.stdout)
+        self.assertEqual(before, snapshot(self.home))
+
     def test_claude_config_override_applies_only_one_profile(self):
         before = snapshot(self.home)
         custom = self.home / "custom-claude"

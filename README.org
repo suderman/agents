@@ -194,7 +194,7 @@ does not run the shared resolver, fetch skills, or certify global lock agreement
 Use =agents apply= for complete deployment. =bootstrap --check= is a read-only
 adapter preflight. Claude, Antigravity, and Codex also support =bootstrap --verify=.
 
-=agents apply= deploys Claude resources to =~/.claude=, =~/.claude-home= and =~/.claude-work= by default. It checks all three profiles before writing; =agents doctor= checks and reports each profile separately. Each profile keeps its own settings merge, managed-entry record, backups, authentication and session data. Setting =CLAUDE_CONFIG_DIR= selects only that directory instead of the three defaults. Direct =claude/bootstrap= calls still target only =~/.claude= or the explicit override.
+=agents apply= deploys Claude resources to =~/.claude=, =~/.claude-home= and =~/.claude-work= by default. It checks all three profiles before writing; =agents doctor= checks and reports each profile separately. Each profile keeps its own settings merge, managed-entry record, backups, authentication and session data. Setting =CLAUDE_CONFIG_DIR= selects only that directory instead of the three defaults. June's Claude account folders, =~/.local/state/june/accounts/claude1= and so on, link everything but their login and =.claude.json= to =~/.claude=; apply deploys only workspace trust and MCP servers into each one's =.claude.json=, with =bootstrap --state-only=. =june accounts apply= makes those folders from the =accounts= counts in =june/config.json=. Direct =claude/bootstrap= calls still target only =~/.claude= or the explicit override.
 
 Override destinations with =PI_CODING_AGENT_DIR=, =OPENCODE_CONFIG_DIR=,
 =OPENCODE_DIR=, =HERMES_HOME=, =CLAUDE_CONFIG_DIR=, or =CODEX_HOME=. OpenCode also honors

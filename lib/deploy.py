@@ -44,6 +44,12 @@ def destinations():
     }
 
 
+def account_folders():
+    """June's Claude account folders (claude1, claude2, ...), which share all but their login and .claude.json with ~/.claude."""
+    root = Path.home() / ".local/state/june/accounts"
+    return sorted(p for p in root.glob("claude[0-9]") if p.is_dir() and not p.is_symlink()) if root.is_dir() else []
+
+
 def deployments(names):
     configured = destinations()
     for name in names:
@@ -51,12 +57,16 @@ def deployments(names):
         if name == "claude" and not os.environ.get("CLAUDE_CONFIG_DIR"):
             for relative in [".claude-home", ".claude-work"]:
                 yield name, Path.home() / relative
+            for folder in account_folders():
+                yield name, folder
 
 
 def bootstrap(name, destination, *args, capture=False):
     env = os.environ.copy()
     if name == "claude" and destination != destinations()["claude"]:
         env["CLAUDE_CONFIG_DIR"] = str(destination)
+        if destination in account_folders():
+            args = ("--state-only", *args)
     return run(str(ROOT / name / "bootstrap"), *args, capture=capture, env=env)
 
 
