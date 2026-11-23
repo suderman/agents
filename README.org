@@ -279,6 +279,7 @@ built-in plugin options require.
   Pi's existing fullscreen setting remains unchanged.
 - Disable auto memory, built-in Git instructions and the initial Git snapshot,
   spinner tips, prompt suggestions, and feedback drafts.
+- Mark first-run onboarding and the auto-mode notices as done in each profile's =.claude.json=, from =claude/state.json=, so a new profile or June account folder starts without the welcome screens. These are defaults: a value the profile already holds wins.
 - Retain transcripts for 365 days. Automatic compaction, session history, and
   file checkpoints remain enabled by default.
 - Use high effort without selecting a model. Top-level =effortLevel= covers

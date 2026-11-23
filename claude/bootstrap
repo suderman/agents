@@ -129,6 +129,10 @@ def workspace_trust():
             if not isinstance(project, dict):
                 raise TypeError(f"Claude workspace trust entry must be an object: {path}")
             project["hasTrustDialogAccepted"] = True
+    # First-run answers and seen notices, so a new profile or account folder starts like the others. Defaults only:
+    # a value the profile already holds wins.
+    for key, value in json.loads((SOURCE / "state.json").read_text()).items():
+        state.setdefault(key, value)
     return config, state
 
 

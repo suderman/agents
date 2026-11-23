@@ -120,6 +120,7 @@ class AgentsTests(unittest.TestCase):
         temp_root = str(Path("/tmp").resolve())  # noqa: S108
         (self.home / ".claude.json").write_text(json.dumps({
             "oauth": "preserve", "projects": {temp_root: {"hasTrustDialogAccepted": True}},
+            **json.loads((self.root / "claude/state.json").read_text()),
         }))
         before = self.native_snapshot()
         old_settings = (self.home / ".claude/settings.json").read_bytes()
@@ -409,11 +410,14 @@ class AgentsTests(unittest.TestCase):
         folder.mkdir(parents=True)
         for entry in base.iterdir():
             (folder / entry.name).symlink_to(entry)
-        (folder / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "a@example.invalid"}}))
+        (folder / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "a@example.invalid"},
+                                                        "hasSeenAutoDefaultNotice": False}))
         result = self.command("apply")
         self.assertIn(f"claude: applied to {folder}", result.stdout)
         state = json.loads((folder / ".claude.json").read_text())
         self.assertEqual(state["oauthAccount"]["emailAddress"], "a@example.invalid")
+        self.assertTrue(state["hasCompletedOnboarding"])
+        self.assertFalse(state["hasSeenAutoDefaultNotice"], "a profile's own answer wins over the default")
         self.assertIn("shared", state["mcpServers"])
         self.assertTrue(state["projects"][str(self.home / "src")]["hasTrustDialogAccepted"])
         for name in ["settings.json", "CLAUDE.md", "skills", ".agents-managed.json"]:
