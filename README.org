@@ -239,7 +239,7 @@ native skills, Git metadata, local commands, and other files stay in place.
 Hermes deep-merges YAML maps. Declared scalars and whole lists win; unrelated
 settings and comments survive. Invalid, non-mapping, or multi-document YAML
 fails without overwriting it. =SOUL.md= remains a writable declared copy.
-Hermes uses the named =custom:codex-lb= Responses provider, native Camofox browser,
+Hermes uses the native Camofox browser,
 and its native web/vision tools. Services, browser profiles, secrets, and the
 Herdr/Pi launch integration remain separate machine configuration.
 

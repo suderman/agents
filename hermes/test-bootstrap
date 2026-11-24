@@ -42,11 +42,9 @@ printf '%s\n' \
   '  api_mode: chat_completions' \
   '  temperature: 0.7 # Keep this comment' \
   'providers:' \
-  '  codex-lb:' \
-  '    api_mode: chat_completions' \
-  '    context_length: 131072' \
   '  local:' \
   '    base_url: http://localhost:8080/v1' \
+  '    context_length: 131072' \
   'agent:' \
   '  reasoning_effort: low' \
   '  max_turns: 42' \
@@ -72,15 +70,12 @@ ln -sf "$fixture/runtime.yaml" "$HERMES_HOME/config.yaml"
 "$source_dir/bootstrap"
 [[ ! -L "$HERMES_HOME/config.yaml" ]]
 cmp "$fixture/runtime-before.yaml" "$fixture/runtime.yaml"
-# Named provider selects Responses even when legacy model fields survive.
+# Repo defaults merge without clobbering runtime providers or extra model fields.
 yq --exit-status '
   .model.default == "gpt-6-luna" and
-  .model.provider == "custom:codex-lb" and
-  .providers.codex-lb.base_url == "https://codex-lb.kit/v1" and
-  .providers.codex-lb.key_env == "CODEX_LB_API_KEY" and
-  .providers.codex-lb.api_mode == "codex_responses" and
-  .providers.codex-lb.context_length == 131072 and
+  .model.provider == "old-provider" and
   .providers.local.base_url == "http://localhost:8080/v1" and
+  .providers.local.context_length == 131072 and
   .model.api_mode == "chat_completions" and
   .model.temperature == 0.7 and
   .agent.reasoning_effort == "high" and
