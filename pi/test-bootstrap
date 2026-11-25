@@ -21,6 +21,8 @@ printf 'saved runtime state\n' >"$PI_CODING_AGENT_DIR/runtime-state"
 for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
   printf '{"oldAdapterState":true}\n' >"$PI_CODING_AGENT_DIR/$file"
 done
+mkdir -p "$PI_CODING_AGENT_DIR/extensions"
+printf '{"manualMode":{"default":"active"}}\n' >"$PI_CODING_AGENT_DIR/extensions/dcp.json"
 printf '{"name":"stylix","generated":true}\n' >"$PI_CODING_AGENT_DIR/themes/stylix.json"
 
 runtime_hashes() {
@@ -39,6 +41,7 @@ jq -e '
   .defaultTools == ["+codemode"] and .theme == "stylix" and
   (.packages | index("npm:pi-mcp-adapter") == null) and
   (.packages | index("npm:pi-subagents") == null) and
+  (.packages | index("npm:@pi-vault/pi-dcp") == null) and
   (has("subagents") | not)
 ' "$PI_CODING_AGENT_DIR/settings.json" >/dev/null
 jq -e '
@@ -49,7 +52,7 @@ jq -e '
 ' "$PI_CODING_AGENT_DIR/mcp.json" >/dev/null
 [[ ! -L "$PI_CODING_AGENT_DIR/mcp.json" && -w "$PI_CODING_AGENT_DIR/mcp.json" ]]
 [[ "$(runtime_hashes)" == "$before" ]]
-for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json; do
+for file in mcp-adapter.json mcp-cache.json mcp-npx-cache.json extensions/dcp.json; do
   [[ ! -e "$PI_CODING_AGENT_DIR/$file" && ! -L "$PI_CODING_AGENT_DIR/$file" ]]
 done
 grep -q 'mcp__chrome_devtools__take_snapshot' "$PI_CODING_AGENT_DIR/AGENTS.md"

@@ -131,6 +131,8 @@ deploy_mcp
 
 # Native MCP replaces the retired adapter configuration and disposable caches.
 rm -f -- "$runtime_dir/"{mcp-adapter.json,mcp-cache.json,mcp-npx-cache.json}
+# Retire pi-dcp extension config; Pi manages context natively.
+rm -f -- "$runtime_dir/extensions/dcp.json"
 
 for directory in extensions prompts themes; do
   copy_declared_entries "$directory"

@@ -127,7 +127,7 @@ function compactStatus(value: string): string | undefined {
 			"",
 		)
 		.trim();
-	if (!text || text.startsWith("DCP:")) return undefined;
+	if (!text) return undefined;
 
 	const mcp = text.match(/^MCP:\s*(\d+) servers? enabled\b/i);
 	if (mcp) {
