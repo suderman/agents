@@ -55,8 +55,6 @@ def deployments(names):
     for name in names:
         yield name, configured[name]
         if name == "claude" and not os.environ.get("CLAUDE_CONFIG_DIR"):
-            for relative in [".claude-home", ".claude-work"]:
-                yield name, Path.home() / relative
             for folder in account_folders():
                 yield name, folder
 

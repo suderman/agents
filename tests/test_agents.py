@@ -68,7 +68,7 @@ class AgentsTests(unittest.TestCase):
         self.write("skills.json", {"skills": [self.entry]})
         self.write("skills.lock", {"skills": [{**self.entry, "revision": self.revision}]})
         self.native = []
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work",
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude",
                          ".gemini/antigravity-cli", ".codex"]:
             runtime = self.home / relative
             self.skill(runtime / "skills/native", "native")
@@ -240,7 +240,7 @@ class AgentsTests(unittest.TestCase):
                 target.unlink()
 
     def test_native_declared_names_cannot_shadow_shared_skills(self):
-        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude", ".claude-home", ".claude-work",
+        for relative in [".pi/agent", ".config/opencode", ".hermes", ".claude",
                          ".gemini/antigravity-cli", ".gemini/config", ".gemini"]:
             with self.subTest(runtime=relative):
                 target = self.home / relative / "skills/other-folder"
@@ -357,12 +357,12 @@ class AgentsTests(unittest.TestCase):
         self.command("apply", error="invalid or unsupported TOML", env=env)
         self.assertEqual(before, snapshot(self.home))
 
-    def test_claude_profiles_receive_shared_resources_and_keep_separate_state(self):
+    def test_claude_profile_receives_shared_resources_and_keeps_its_state(self):
         (self.home / "src").mkdir()
         self.write("claude/mcp.json", {"mcpServers": {
             "shared": {"type": "http", "url": "https://example.invalid/mcp"},
         }})
-        profiles = [self.home / name for name in [".claude", ".claude-home", ".claude-work"]]
+        profiles = [self.home / ".claude"]
         for profile in profiles:
             (profile / "settings.json").write_text(json.dumps({"model": profile.name, "env": {"PROFILE": profile.name}}))
             state = self.home / ".claude.json" if profile.name == ".claude" else profile / ".claude.json"
@@ -370,6 +370,9 @@ class AgentsTests(unittest.TestCase):
                 "native": {"type": "http", "url": f"https://example.invalid/{profile.name}"},
             }}))
         result = self.command("apply")
+        self.assertEqual(result.stdout.count("claude: applied to"), 1)
+        for name in [".claude-home", ".claude-work"]:
+            self.assertFalse((self.home / name).exists(), "retired profiles are not recreated")
         for profile in profiles:
             self.assertIn(f"claude: applied to {profile}", result.stdout)
             settings = json.loads((profile / "settings.json").read_text())
@@ -439,16 +442,16 @@ class AgentsTests(unittest.TestCase):
         for name, value in before.items():
             if not name.startswith(".agents/"):
                 self.assertEqual(after[name], value, name)
-        for name in [".claude", ".claude-home", ".claude-work"]:
-            self.assertFalse((self.home / name / ".agents-managed.json").exists())
+        self.assertFalse((self.home / ".claude/.agents-managed.json").exists())
         before = snapshot(self.home)
         self.command("doctor", env=env)
         self.assertEqual(before, snapshot(self.home))
 
     def test_claude_profile_preflight_fails_before_any_writes(self):
-        profile = self.home / ".claude-work"
-        for path, content, error in [(profile / "settings.json", "[]", "must be a JSON object"),
-                                     (profile / ".claude.json", '{"projects":[]}', "Claude workspace trust")]:
+        folder = self.home / ".local/state/june/accounts/claude1"
+        folder.mkdir(parents=True)
+        for path, content, error in [(self.home / ".claude/settings.json", "[]", "must be a JSON object"),
+                                     (folder / ".claude.json", '{"projects":[]}', "Claude workspace trust")]:
             with self.subTest(path=path):
                 path.write_text(content)
                 before = snapshot(self.home)
